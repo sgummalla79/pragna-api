@@ -8,6 +8,8 @@ from repositories.artifact_repository import ArtifactRepository
 from repositories.usage_repository import UsageRepository
 from repositories.user_llm_models_repository import UserLLMModelsRepository
 from repositories.user_skill_v2_repository import UserSkillV2Repository
+from repositories.llm_provider_repository import LLMProviderRepository
+from repositories.llm_model_repository import LLMModelRepository
 
 __all__ = [
     "SkillRepository",
@@ -20,4 +22,6 @@ __all__ = [
     "UsageRepository",
     "UserLLMModelsRepository",
     "UserSkillV2Repository",
+    "LLMProviderRepository",
+    "LLMModelRepository",
 ]
