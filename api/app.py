@@ -182,8 +182,7 @@ Pipeline and chat endpoints return `text/event-stream`. Each event is a JSON obj
     ],
     lifespan=lifespan,
     swagger_ui_parameters={
-        "supportedSubmitMethods": [],   # disables "Try it out" on every endpoint
-        "defaultModelsExpandDepth": -1, # hides the Schemas section by default
+        "defaultModelsExpandDepth": -1,
     },
 )
 
