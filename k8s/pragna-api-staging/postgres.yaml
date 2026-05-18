@@ -2,7 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: postgres-staging-pvc
-  namespace: pragna-staging
+  namespace: pragna-api-staging
 spec:
   accessModes:
     - ReadWriteOnce
@@ -14,7 +14,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgres
-  namespace: pragna-staging
+  namespace: pragna-api-staging
 spec:
   replicas: 1
   selector:
@@ -36,12 +36,12 @@ spec:
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: pragna-staging-secrets
+                  name: pragna-api-staging-secrets
                   key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: pragna-staging-secrets
+                  name: pragna-api-staging-secrets
                   key: POSTGRES_PASSWORD
           volumeMounts:
             - name: postgres-data
@@ -67,7 +67,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: postgres
-  namespace: pragna-staging
+  namespace: pragna-api-staging
 spec:
   selector:
     app: postgres

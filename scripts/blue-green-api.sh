@@ -15,8 +15,8 @@
 #   8. Scale down the old slot
 #
 # Requirements on the cluster (run once):
-#   - Namespace 'pragna' with both blue/green Deployments applied
-#   - Secret 'pragna-secrets' populated
+#   - Namespace 'pragna-api' with both blue/green Deployments applied
+#   - Secret 'pragna-api-secrets' populated
 #   - ghcr-pull-secret for image pulls
 #
 set -euo pipefail
@@ -29,7 +29,7 @@ if [ -z "$VERSION" ]; then
   exit 1
 fi
 
-NS="pragna"
+NS="pragna-api"
 IMAGE_API="ghcr.io/${OWNER}/pragna-api:${VERSION}"
 
 # ── 1. Detect active slot ──────────────────────────────────────────────────────
@@ -75,7 +75,7 @@ kubectl rollout status deployment/pragna-api-${NEW_SLOT} \
 # ── 4. Run Alembic migrations ─────────────────────────────────────────────────
 
 echo "=== Running Alembic migrations ==="
-DB_URL=$(kubectl get secret pragna-secrets -n "$NS" \
+DB_URL=$(kubectl get secret pragna-api-secrets -n "$NS" \
   -o jsonpath='{.data.DATABASE_URL}' | base64 --decode)
 MIGRATION_POD="alembic-migrate-${VERSION//\./-}"
 kubectl run "${MIGRATION_POD}" \
