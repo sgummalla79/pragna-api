@@ -32,8 +32,6 @@ from repositories.artifact_repository import ArtifactRepository
 from repositories.usage_repository import UsageRepository
 from repositories.user_llm_models_repository import UserLLMModelsRepository
 from repositories.model_pricing_repository import ModelPricingRepository
-from repositories.model_catalog_repository import ModelCatalogRepository
-from repositories.provider_registry_repository import ProviderRegistryRepository
 from repositories.user_skill_v2_repository import UserSkillV2Repository
 
 log = logging.getLogger(__name__)
@@ -57,8 +55,6 @@ class DBContext:
     usage:         UsageRepository
     llm_models:    UserLLMModelsRepository
     model_pricing:   ModelPricingRepository
-    model_catalog:     ModelCatalogRepository
-    provider_registry: ProviderRegistryRepository
     user_skill_v2:     UserSkillV2Repository
 
 
@@ -108,8 +104,6 @@ async def get_db():
             usage         = UsageRepository(pool),
             llm_models    = UserLLMModelsRepository(pool),
             model_pricing = ModelPricingRepository(pool),
-            model_catalog     = ModelCatalogRepository(pool),
-            provider_registry = ProviderRegistryRepository(pool),
             user_skill_v2     = UserSkillV2Repository(pool),
         )
 

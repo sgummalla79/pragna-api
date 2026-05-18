@@ -89,6 +89,14 @@ class UserRepository(BaseRepository):
             (user_id, key_name),
         )
 
+    async def get_llm_provider_id(self, user_id: str, key_name: str) -> Optional[str]:
+        """Return user_llm_providers.id for a given user + provider key, or None."""
+        row = await self._fetchone(
+            "SELECT id FROM user_llm_providers WHERE user_id = %s AND key_name = %s",
+            (user_id, key_name),
+        )
+        return str(row[0]) if row else None
+
     async def save_config(self, user_id: str, key: str, value: str) -> None:
         now = datetime.now(timezone.utc).isoformat()
         await self._exec(

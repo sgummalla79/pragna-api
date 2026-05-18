@@ -39,7 +39,7 @@ async def test_migration_applies_cleanly():
             "conversation_skill_executions", "conversation_skill_execution_stages",
             "conversation_messages", "conversation_artifacts",
             "token_usage", "user_llm_models",
-            "model_pricing", "provider_catalog", "provider_registry",
+            "model_pricing",
         }
 
         async with pool.connection() as conn:

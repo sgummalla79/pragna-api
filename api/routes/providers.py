@@ -26,6 +26,7 @@ from pydantic import BaseModel
 
 from utils.auth import AuthUser, get_current_user
 from utils.key_encryption import encrypt
+from utils.providers_catalog import get_all_providers, get_provider
 
 log    = logging.getLogger(__name__)
 router = APIRouter(prefix="/providers")
@@ -53,21 +54,18 @@ async def _fetch_and_seed_models(
     """
     from utils.provider_registry import fetch_models
 
-    fetch_error: str | None = None
-    models = []
-
-    catalog = await db.model_catalog.get_by_provider(provider_key)
-    catalog_models = [{"model_id": c.model_id, "display_name": c.display_name} for c in catalog]
-
     try:
-        models = await fetch_models(provider_key, api_key, catalog_models=catalog_models)
+        models = await fetch_models(provider_key, api_key)
     except Exception as exc:
-        fetch_error = str(exc)
         log.warning("Could not fetch models for provider '%s': %s", provider_key, exc)
-        return 0, fetch_error   # bail out — do not wipe existing models
+        return 0, str(exc)
+
+    provider_id = await db.users.get_llm_provider_id(user_id, provider_key)
+    if not provider_id:
+        return 0, "Provider connection not found."
 
     try:
-        await db.llm_models.seed(user_id, provider_key, models)
+        await db.llm_models.seed(provider_id, models)
     except Exception as exc:
         log.error("Could not seed models for provider '%s': %s", provider_key, exc)
         return 0, str(exc)
@@ -87,19 +85,18 @@ async def list_providers(request: Request, current_user: AuthUser = Depends(get_
     db           = request.app.state.db
     key_statuses = await db.users.get_llm_provider_key_statuses(current_user.sub)
 
-    registry  = await db.provider_registry.get_all()
     providers = []
-    for entry in registry:
-        pid      = entry.provider_key
+    for entry in get_all_providers():
+        pid      = entry["provider_key"]
         has_key  = pid in key_statuses
         isactive = key_statuses.get(pid, False)
         providers.append({
             "id":          pid,
-            "name":        entry.name,
+            "name":        entry["name"],
             "connected":   has_key,
             "isactive":    isactive,
-            "description": entry.description,
-            "auth_config": entry.auth_config,
+            "description": entry["description"],
+            "auth_config": entry["auth_config"],
         })
 
     # AWS Bedrock virtual tile
@@ -134,9 +131,10 @@ async def connect_bedrock(
     await db.users.save_llm_provider_key(current_user.sub, "anthropic_bedrock_token", encrypt(body.bedrock_token, current_user.sub))
     await db.users.save_llm_provider_key(current_user.sub, "anthropic_mode",          encrypt("bedrock",           current_user.sub))
 
-    catalog = await db.model_catalog.get_by_provider("bedrock")
-    models  = [{"model_id": c.model_id, "display_name": c.display_name} for c in catalog]
-    await db.llm_models.seed(current_user.sub, "bedrock", models)
+    provider_id = await db.users.get_llm_provider_id(current_user.sub, "anthropic_bedrock_url")
+    if provider_id:
+        count, err = await _fetch_and_seed_models(db, current_user.sub, "bedrock", body.bedrock_token)
+        log.info("Bedrock models seeded: %d (err=%s)", count, err)
     return {"ok": True, "provider": "bedrock", "models_seeded": len(models)}
 
 
@@ -217,7 +215,7 @@ async def connect_provider(
     current_user: AuthUser = Depends(get_current_user),
 ):
     db    = request.app.state.db
-    entry = await db.provider_registry.get_by_key(provider_id)
+    entry = get_provider(provider_id)
     if not entry:
         raise HTTPException(status_code=404, detail=f"Unknown provider: {provider_id}")
     # Ensure user row exists before any FK-referencing inserts
@@ -366,10 +364,8 @@ async def refresh_provider_models(
     statuses = await db.users.get_llm_provider_key_statuses(current_user.sub)
 
     if provider_id == "bedrock":
-        catalog = await db.model_catalog.get_by_provider("bedrock")
-        models  = [{"model_id": c.model_id, "display_name": c.display_name} for c in catalog]
-        await db.llm_models.seed(current_user.sub, "bedrock", models)
-        return {"ok": True, "provider": "bedrock", "models_seeded": len(models)}
+        count, err = await _fetch_and_seed_models(db, current_user.sub, "bedrock", "")
+        return {"ok": True, "provider": "bedrock", "models_seeded": count, "fetch_error": err}
 
     if provider_id not in statuses:
         raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not connected.")
