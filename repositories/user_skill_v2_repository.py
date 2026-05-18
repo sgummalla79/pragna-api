@@ -118,7 +118,7 @@ class UserSkillV2Repository(BaseRepository):
 
         for agent in base_agents:
             await self._exec(
-                "INSERT INTO user_skill_agents"
+                "INSERT INTO user_skill_agent_versions"
                 " (user_id, user_skill_version_id, skill_agent_id, content, model_id)"
                 " VALUES (%s, %s, %s, %s, %s)",
                 (user_id, version_id, agent.skill_agent_id, agent.content, agent.model_id),
@@ -136,7 +136,7 @@ class UserSkillV2Repository(BaseRepository):
     ) -> None:
         """Update a single agent's content within a draft version."""
         await self._exec(
-            "UPDATE user_skill_agents SET content = %s, model_id = %s"
+            "UPDATE user_skill_agent_versions SET content = %s, model_id = %s"
             " WHERE user_skill_version_id = %s AND skill_agent_id = %s",
             (content, model_id, user_skill_version_id, skill_agent_id),
         )
@@ -177,7 +177,7 @@ class UserSkillV2Repository(BaseRepository):
         rows = await self._fetchall(
             "SELECT id, user_id, user_skill_version_id, skill_agent_id,"
             "       content, model_id, created_at, modified_at"
-            " FROM user_skill_agents WHERE user_skill_version_id = %s"
+            " FROM user_skill_agent_versions WHERE user_skill_version_id = %s"
             " ORDER BY skill_agent_id",
             (user_skill_version_id,),
         )
