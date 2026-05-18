@@ -22,14 +22,15 @@ class LLMModelRepository(BaseRepository):
     async def create(
         self,
         name:                     str,
+        llm_provider_id:          str,
         input_usd_per_1m_tokens:  Decimal,
         output_usd_per_1m_tokens: Decimal,
     ) -> LLMModel:
         row = await self._fetchone(
-            "INSERT INTO llm_models (name, input_usd_per_1m_tokens, output_usd_per_1m_tokens)"
-            " VALUES (%s, %s, %s)"
+            "INSERT INTO llm_models (name, llm_provider_id, input_usd_per_1m_tokens, output_usd_per_1m_tokens)"
+            " VALUES (%s, %s, %s, %s)"
             " RETURNING id, name, llm_provider_id, input_usd_per_1m_tokens, output_usd_per_1m_tokens, created_at, modified_at",
-            (name, input_usd_per_1m_tokens, output_usd_per_1m_tokens),
+            (name, llm_provider_id, input_usd_per_1m_tokens, output_usd_per_1m_tokens),
         )
         return self._row(row)
 
