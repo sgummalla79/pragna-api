@@ -43,12 +43,6 @@ Global catalog of supported LLM providers. Seeded at startup; not user-specific.
 | created_at | TIMESTAMPTZ | NO | `now()` | |
 | modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on any UPDATE |
 
-**Trigger:** `trg_users_modified_at` — updates `modified_at` on every UPDATE.
-
----
-
-## llm_providers
-
 **Trigger:** `trg_llm_providers_modified_at` — updates `modified_at` on every UPDATE.
 
 ---
@@ -135,8 +129,6 @@ Out-of-the-box skill definitions (e.g. `architect`). Seeded from disk at startup
 | created_at | TIMESTAMPTZ | YES | `now()` | |
 | modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on any UPDATE |
 
----
-
 **Trigger:** `trg_skills_modified_at` — updates `modified_at` on every UPDATE.
 
 ---
@@ -191,6 +183,7 @@ Version history for a user's installed skill. Each edit cycle creates a new draf
 | version_number | INTEGER | NO | `1` | Auto-incremented per user_skill |
 | status | VARCHAR | NO | `'draft'` | `'draft'` or `'published'` |
 | created_at | TIMESTAMPTZ | NO | `now()` | |
+| modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on any UPDATE |
 
 **Unique:** `(user_skill_id, version_number)`
 
@@ -199,6 +192,8 @@ Version history for a user's installed skill. Each edit cycle creates a new draf
 **Indexes:**
 - `idx_user_skill_versions_user_skill_id` on `(user_skill_id)`
 - `idx_user_skill_versions_status` on `(user_skill_id, status)`
+
+**Trigger:** `trg_user_skill_versions_modified_at` — updates `modified_at` on every UPDATE.
 
 ---
 
@@ -209,7 +204,6 @@ Stores a user's customised agent content within a specific skill version. On eac
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | UUID | NO | `gen_random_uuid()` | **PK** |
-| user_id | TEXT | NO | | **FK** → `users(id)` ON DELETE CASCADE |
 | user_skill_version_id | UUID | NO | | **FK** → `user_skill_versions(id)` ON DELETE CASCADE |
 | skill_agent_id | UUID | NO | | **FK** → `skill_agents(id)` ON DELETE CASCADE |
 | content | TEXT | NO | | User's customised system prompt |
@@ -221,7 +215,6 @@ Stores a user's customised agent content within a specific skill version. On eac
 
 **Indexes:**
 - `idx_user_skill_agent_versions_version_id` on `(user_skill_version_id)`
-- `idx_user_skill_agent_versions_user_id` on `(user_id)`
 
 **Trigger:** `trg_user_skill_agents_v2_modified_at` — updates `modified_at` when `content` changes.
 
@@ -240,4 +233,7 @@ users
 
 skills
   └── skill_agents
+
+llm_providers
+  └── llm_models
 ```
