@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pragna-api
+  namespace: pragna-api-staging
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: api-staging.sgummallaworks.com
+      http:
+        paths:
+          - path: /pragna
+            pathType: Prefix
+            backend:
+              service:
+                name: pragna-api
+                port:
+                  number: 8000
+  tls:
+    - hosts:
+        - api-staging.sgummallaworks.com
