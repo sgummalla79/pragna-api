@@ -19,22 +19,27 @@ if ! python -c "import uvicorn" 2>/dev/null; then
   pip install -r requirements.txt
 fi
 
+# ── Load .env.dev into shell environment ──────────────────────────────────────
+if [ -f ".env.dev" ]; then
+  set -a
+  source .env.dev
+  set +a
+fi
+
 # ── Local database ─────────────────────────────────────────────────────────────
-# Only start Docker Postgres if DATABASE_URL is set to localhost
-DB_URL=$(grep -E '^DATABASE_URL=' .env.dev 2>/dev/null | cut -d= -f2- || echo "")
-if echo "$DB_URL" | grep -qE "localhost|127\.0\.0\.1"; then
+if echo "${DATABASE_URL:-}" | grep -qE "localhost|127\.0\.0\.1"; then
   echo "=== Ensuring local Postgres is running ==="
   bash scripts/local-db.sh start
-elif [ -z "$DB_URL" ]; then
+elif [ -z "${DATABASE_URL:-}" ]; then
   echo "=== DATABASE_URL not set — using SQLite ==="
 fi
 
 # ── Run migrations ─────────────────────────────────────────────────────────────
 echo "=== Running migrations ==="
-APP_ENV=dev python -m alembic upgrade head
+python -m alembic upgrade head
 
 # ── Start API ─────────────────────────────────────────────────────────────────
 echo "=== Starting Pragna API ==="
 echo "    Docs: http://localhost:8000/docs"
 echo ""
-APP_ENV=dev uvicorn api.app:app --reload --port 8000
+uvicorn api.app:app --reload --port 8000
