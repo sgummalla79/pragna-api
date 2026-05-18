@@ -108,42 +108,42 @@ jobs:
             TAG="staging-${SHA}"
 
             echo "=== Running migrations ==="
-            DB_URL=$(kubectl get secret pragna-staging-secrets -n pragna-staging \
+            DB_URL=$(kubectl get secret pragna-api-staging-secrets -n pragna-api-staging \
               -o jsonpath='{.data.DATABASE_URL}' | base64 --decode)
             MIGRATION_POD="alembic-staging-${SHA}"
             kubectl run "${MIGRATION_POD}" \
               --image=ghcr.io/${{ github.repository_owner }}/pragna-api:${TAG} \
               --restart=Never \
-              -n pragna-staging \
+              -n pragna-api-staging \
               --env="DATABASE_URL=${DB_URL}" \
               --overrides='{"spec":{"imagePullSecrets":[{"name":"ghcr-pull-secret"}]}}' \
               -- python -m alembic upgrade head
 
             echo "Waiting for migration pod..."
             for i in $(seq 1 60); do
-              PHASE=$(kubectl get pod "${MIGRATION_POD}" -n pragna-staging \
+              PHASE=$(kubectl get pod "${MIGRATION_POD}" -n pragna-api-staging \
                 -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
               echo "  attempt $i: phase=${PHASE}"
               if [ "${PHASE}" = "Succeeded" ]; then break; fi
               if [ "${PHASE}" = "Failed" ]; then
-                kubectl logs "${MIGRATION_POD}" -n pragna-staging || true
-                kubectl delete pod "${MIGRATION_POD}" -n pragna-staging --ignore-not-found
+                kubectl logs "${MIGRATION_POD}" -n pragna-api-staging || true
+                kubectl delete pod "${MIGRATION_POD}" -n pragna-api-staging --ignore-not-found
                 exit 1
               fi
               if [ "$i" = "6" ]; then
-                kubectl describe pod "${MIGRATION_POD}" -n pragna-staging || true
+                kubectl describe pod "${MIGRATION_POD}" -n pragna-api-staging || true
               fi
               sleep 5
             done
-            kubectl logs "${MIGRATION_POD}" -n pragna-staging || true
-            kubectl delete pod "${MIGRATION_POD}" -n pragna-staging --ignore-not-found
+            kubectl logs "${MIGRATION_POD}" -n pragna-api-staging || true
+            kubectl delete pod "${MIGRATION_POD}" -n pragna-api-staging --ignore-not-found
             echo "=== Migrations complete ==="
 
             echo "=== Rolling out ${TAG} ==="
             kubectl set image deployment/pragna-api \
               pragna-api=ghcr.io/${{ github.repository_owner }}/pragna-api:${TAG} \
-              -n pragna-staging
-            kubectl rollout status deployment/pragna-api -n pragna-staging --timeout=120s
+              -n pragna-api-staging
+            kubectl rollout status deployment/pragna-api -n pragna-api-staging --timeout=120s
 
             echo "=== Health check ==="
             for i in $(seq 1 12); do
@@ -154,7 +154,7 @@ jobs:
               sleep 10
             done
 
-            kubectl get pods -n pragna-staging
+            kubectl get pods -n pragna-api-staging
 
       - name: Summary
         if: always()

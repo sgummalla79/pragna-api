@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pragna-api-blue
-  namespace: pragna
+  name: pragna-api-green
+  namespace: pragna-api
 spec:
-  replicas: 1
+  replicas: 0  # starts scaled down; deploy script scales up before switching
   selector:
     matchLabels:
       app: pragna-api
-      slot: blue
+      slot: green
   template:
     metadata:
       labels:
         app: pragna-api
-        slot: blue
+        slot: green
     spec:
       imagePullSecrets:
         - name: ghcr-pull-secret
@@ -25,7 +25,7 @@ spec:
             - containerPort: 8000
           envFrom:
             - secretRef:
-                name: pragna-secrets
+                name: pragna-api-secrets
           resources:
             requests:
               memory: "256Mi"
