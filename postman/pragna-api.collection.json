@@ -1,0 +1,533 @@
+{
+  "info": {
+    "name": "Pragna API",
+    "description": "Complete API collection for the Pragna multi-agent AI platform.\n\n**Auth setup:**\n1. Visit `{{base_url}}/auth/initiate` in your browser and complete the Auth0 login.\n2. Open browser DevTools → Application → Cookies → copy the `session` cookie value.\n3. Paste it into the `session_cookie` environment variable.\n\nAll protected endpoints automatically send `Cookie: session={{session_cookie}}`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key",   "value": "Cookie",                    "type": "string" },
+      { "key": "value", "value": "session={{session_cookie}}", "type": "string" },
+      { "key": "in",    "value": "header",                    "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] }
+          }
+        },
+        {
+          "name": "App info",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/about", "host": ["{{base_url}}"], "path": ["api", "about"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "List Auth0 connections",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/auth/connections", "host": ["{{base_url}}"], "path": ["auth", "connections"] }
+          }
+        },
+        {
+          "name": "Initiate OAuth login (browser only)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/auth/initiate?connection=",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "initiate"],
+              "query": [{ "key": "connection", "value": "", "description": "Optional — e.g. google-oauth2" }]
+            },
+            "description": "Open this in a browser — redirects to Auth0. After login, copy the `session` cookie into the `session_cookie` environment variable."
+          }
+        },
+        {
+          "name": "Email / password login",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"you@example.com\",\n  \"password\": \"yourpassword\",\n  \"connection\": \"Username-Password-Authentication\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/token", "host": ["{{base_url}}"], "path": ["auth", "token"] }
+          }
+        },
+        {
+          "name": "Get current user",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Providers",
+      "item": [
+        {
+          "name": "List providers",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/providers", "host": ["{{base_url}}"], "path": ["api", "providers"] }
+          }
+        },
+        {
+          "name": "Connect provider (API key)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api_key\": \"sk-...\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/providers/:provider_id/connect", "host": ["{{base_url}}"], "path": ["api", "providers", ":provider_id", "connect"], "variable": [{ "key": "provider_id", "value": "anthropic" }] }
+          }
+        },
+        {
+          "name": "Toggle provider",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{base_url}}/api/providers/:provider_id/toggle", "host": ["{{base_url}}"], "path": ["api", "providers", ":provider_id", "toggle"], "variable": [{ "key": "provider_id", "value": "anthropic" }] }
+          }
+        },
+        {
+          "name": "Disconnect provider",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/providers/:provider_id", "host": ["{{base_url}}"], "path": ["api", "providers", ":provider_id"], "variable": [{ "key": "provider_id", "value": "anthropic" }] }
+          }
+        },
+        {
+          "name": "List provider models",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/providers/:provider_id/models", "host": ["{{base_url}}"], "path": ["api", "providers", ":provider_id", "models"], "variable": [{ "key": "provider_id", "value": "anthropic" }] }
+          }
+        },
+        {
+          "name": "Toggle model",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{base_url}}/api/providers/:provider_id/models/:model_id", "host": ["{{base_url}}"], "path": ["api", "providers", ":provider_id", "models", ":model_id"], "variable": [{ "key": "provider_id", "value": "anthropic" }, { "key": "model_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Update model display name",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"display_name\": \"Claude Sonnet\"\n}" },
+            "url": { "raw": "{{base_url}}/api/providers/:provider_id/models/:model_id/display-name", "host": ["{{base_url}}"], "path": ["api", "providers", ":provider_id", "models", ":model_id", "display-name"], "variable": [{ "key": "provider_id", "value": "anthropic" }, { "key": "model_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Refresh provider models",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/providers/:provider_id/refresh", "host": ["{{base_url}}"], "path": ["api", "providers", ":provider_id", "refresh"], "variable": [{ "key": "provider_id", "value": "anthropic" }] }
+          }
+        },
+        {
+          "name": "Get model info",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/providers/model-info?provider=anthropic&model=claude-sonnet-4-6",
+              "host": ["{{base_url}}"],
+              "path": ["api", "providers", "model-info"],
+              "query": [{ "key": "provider", "value": "anthropic" }, { "key": "model", "value": "claude-sonnet-4-6" }]
+            }
+          }
+        },
+        {
+          "name": "Connect Bedrock",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"bedrock_url\": \"\",\n  \"bedrock_token\": \"\"\n}" },
+            "url": { "raw": "{{base_url}}/api/providers/bedrock/connect", "host": ["{{base_url}}"], "path": ["api", "providers", "bedrock", "connect"] }
+          }
+        },
+        {
+          "name": "Toggle Bedrock",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{base_url}}/api/providers/bedrock/toggle", "host": ["{{base_url}}"], "path": ["api", "providers", "bedrock", "toggle"] }
+          }
+        },
+        {
+          "name": "Disconnect Bedrock",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/providers/bedrock", "host": ["{{base_url}}"], "path": ["api", "providers", "bedrock"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Models",
+      "item": [
+        {
+          "name": "List active models",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/models/active", "host": ["{{base_url}}"], "path": ["api", "models", "active"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Skills",
+      "item": [
+        {
+          "name": "List skills",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/skills", "host": ["{{base_url}}"], "path": ["api", "skills"] }
+          }
+        },
+        {
+          "name": "Install skill",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/skills/:skill_id", "host": ["{{base_url}}"], "path": ["api", "skills", ":skill_id"], "variable": [{ "key": "skill_id", "value": "architect" }] }
+          }
+        },
+        {
+          "name": "Uninstall skill",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/skills/:skill_id", "host": ["{{base_url}}"], "path": ["api", "skills", ":skill_id"], "variable": [{ "key": "skill_id", "value": "architect" }] }
+          }
+        },
+        {
+          "name": "Suggest skill config",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/skills/:skill_id/suggest-config", "host": ["{{base_url}}"], "path": ["api", "skills", ":skill_id", "suggest-config"], "variable": [{ "key": "skill_id", "value": "architect" }] }
+          }
+        },
+        {
+          "name": "Validate brief",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"brief\": \"Build a scalable e-commerce platform\"\n}" },
+            "url": { "raw": "{{base_url}}/api/skills/:skill_id/validate-brief", "host": ["{{base_url}}"], "path": ["api", "skills", ":skill_id", "validate-brief"], "variable": [{ "key": "skill_id", "value": "architect" }] }
+          }
+        },
+        {
+          "name": "Classify skill choice",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"response\": \"the first one\",\n  \"skills\": [\n    { \"id\": \"architect\", \"name\": \"Architect\", \"description\": \"Architecture recommendations\" }\n  ]\n}" },
+            "url": { "raw": "{{base_url}}/api/skills/classify-choice", "host": ["{{base_url}}"], "path": ["api", "skills", "classify-choice"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Agents",
+      "item": [
+        {
+          "name": "List agents",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/skills/:skill_id/agents", "host": ["{{base_url}}"], "path": ["api", "skills", ":skill_id", "agents"], "variable": [{ "key": "skill_id", "value": "architect" }] }
+          }
+        },
+        {
+          "name": "Save agent draft",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"content\": \"You are an expert architect...\",\n  \"provider\": \"anthropic\",\n  \"model\": \"claude-sonnet-4-6\"\n}" },
+            "url": { "raw": "{{base_url}}/api/skills/:skill_id/agents/:agent_key/draft", "host": ["{{base_url}}"], "path": ["api", "skills", ":skill_id", "agents", ":agent_key", "draft"], "variable": [{ "key": "skill_id", "value": "architect" }, { "key": "agent_key", "value": "intake" }] }
+          }
+        },
+        {
+          "name": "Discard agent draft",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/skills/:skill_id/agents/:agent_key/draft", "host": ["{{base_url}}"], "path": ["api", "skills", ":skill_id", "agents", ":agent_key", "draft"], "variable": [{ "key": "skill_id", "value": "architect" }, { "key": "agent_key", "value": "intake" }] }
+          }
+        },
+        {
+          "name": "Publish agent draft",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/skills/:skill_id/agents/:agent_key/publish", "host": ["{{base_url}}"], "path": ["api", "skills", ":skill_id", "agents", ":agent_key", "publish"], "variable": [{ "key": "skill_id", "value": "architect" }, { "key": "agent_key", "value": "intake" }] }
+          }
+        },
+        {
+          "name": "Publish all agent drafts",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/skills/:skill_id/publish", "host": ["{{base_url}}"], "path": ["api", "skills", ":skill_id", "publish"], "variable": [{ "key": "skill_id", "value": "architect" }] }
+          }
+        },
+        {
+          "name": "Set agent model",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"provider\": \"anthropic\",\n  \"model\": \"claude-sonnet-4-6\"\n}" },
+            "url": { "raw": "{{base_url}}/api/skills/:skill_id/agents/:agent_key/model", "host": ["{{base_url}}"], "path": ["api", "skills", ":skill_id", "agents", ":agent_key", "model"], "variable": [{ "key": "skill_id", "value": "architect" }, { "key": "agent_key", "value": "intake" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conversations",
+      "item": [
+        {
+          "name": "List conversations",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/conversations", "host": ["{{base_url}}"], "path": ["api", "conversations"] }
+          }
+        },
+        {
+          "name": "Create conversation",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"New conversation\"\n}" },
+            "url": { "raw": "{{base_url}}/api/conversations", "host": ["{{base_url}}"], "path": ["api", "conversations"] }
+          }
+        },
+        {
+          "name": "Get conversation",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/conversations/:conversation_id", "host": ["{{base_url}}"], "path": ["api", "conversations", ":conversation_id"], "variable": [{ "key": "conversation_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Rename conversation",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Updated title\"\n}" },
+            "url": { "raw": "{{base_url}}/api/conversations/:conversation_id", "host": ["{{base_url}}"], "path": ["api", "conversations", ":conversation_id"], "variable": [{ "key": "conversation_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Delete conversation",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/conversations/:conversation_id", "host": ["{{base_url}}"], "path": ["api", "conversations", ":conversation_id"], "variable": [{ "key": "conversation_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Pin conversation",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/conversations/:conversation_id/pin", "host": ["{{base_url}}"], "path": ["api", "conversations", ":conversation_id", "pin"], "variable": [{ "key": "conversation_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Unpin conversation",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/conversations/:conversation_id/pin", "host": ["{{base_url}}"], "path": ["api", "conversations", ":conversation_id", "pin"], "variable": [{ "key": "conversation_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Send chat message (SSE)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Accept", "value": "text/event-stream" }],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"Hello, what can you help me with?\"\n}" },
+            "url": { "raw": "{{base_url}}/api/conversations/:conversation_id/message", "host": ["{{base_url}}"], "path": ["api", "conversations", ":conversation_id", "message"], "variable": [{ "key": "conversation_id", "value": "" }] },
+            "description": "Returns a Server-Sent Events stream. Response is text/event-stream."
+          }
+        },
+        {
+          "name": "Persist message (audit)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"role\": \"user\",\n  \"content\": \"message content\",\n  \"message_type\": \"text\",\n  \"message_state\": \"complete\"\n}" },
+            "url": { "raw": "{{base_url}}/api/conversations/:conversation_id/messages", "host": ["{{base_url}}"], "path": ["api", "conversations", ":conversation_id", "messages"], "variable": [{ "key": "conversation_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Add skill to conversation",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"skill_id\": \"architect\"\n}" },
+            "url": { "raw": "{{base_url}}/api/conversations/:conversation_id/skills", "host": ["{{base_url}}"], "path": ["api", "conversations", ":conversation_id", "skills"], "variable": [{ "key": "conversation_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Remove skill from conversation",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/conversations/:conversation_id/skills/:conversation_skill_id", "host": ["{{base_url}}"], "path": ["api", "conversations", ":conversation_id", "skills", ":conversation_skill_id"], "variable": [{ "key": "conversation_id", "value": "" }, { "key": "conversation_skill_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Get skill agent config",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/conversations/:conversation_id/skills/:conversation_skill_id/config", "host": ["{{base_url}}"], "path": ["api", "conversations", ":conversation_id", "skills", ":conversation_skill_id", "config"], "variable": [{ "key": "conversation_id", "value": "" }, { "key": "conversation_skill_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Update skill agent config",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"agents\": [\n    { \"id\": \"intake\", \"provider\": \"anthropic\", \"model\": \"claude-sonnet-4-6\" }\n  ]\n}" },
+            "url": { "raw": "{{base_url}}/api/conversations/:conversation_id/skills/:conversation_skill_id/config", "host": ["{{base_url}}"], "path": ["api", "conversations", ":conversation_id", "skills", ":conversation_skill_id", "config"], "variable": [{ "key": "conversation_id", "value": "" }, { "key": "conversation_skill_id", "value": "" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Executions",
+      "item": [
+        {
+          "name": "Invoke skill pipeline (SSE)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Accept", "value": "text/event-stream" }],
+            "body": { "mode": "raw", "raw": "{\n  \"brief\": \"Build a scalable e-commerce platform with microservices\",\n  \"source_type\": \"brief\"\n}" },
+            "url": { "raw": "{{base_url}}/api/conversations/:conversation_id/skills/:conversation_skill_id/invoke", "host": ["{{base_url}}"], "path": ["api", "conversations", ":conversation_id", "skills", ":conversation_skill_id", "invoke"], "variable": [{ "key": "conversation_id", "value": "" }, { "key": "conversation_skill_id", "value": "" }] },
+            "description": "Returns a Server-Sent Events stream."
+          }
+        },
+        {
+          "name": "Reply to pipeline interrupt (SSE)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Accept", "value": "text/event-stream" }],
+            "body": { "mode": "raw", "raw": "{\n  \"answers\": [\"yes\", \"focus on scalability\"]\n}" },
+            "url": { "raw": "{{base_url}}/api/executions/:execution_id/reply", "host": ["{{base_url}}"], "path": ["api", "executions", ":execution_id", "reply"], "variable": [{ "key": "execution_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Retry execution (SSE)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "text/event-stream" }],
+            "url": { "raw": "{{base_url}}/api/executions/:execution_id/retry", "host": ["{{base_url}}"], "path": ["api", "executions", ":execution_id", "retry"], "variable": [{ "key": "execution_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Get execution stages",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/executions/:execution_id/stages", "host": ["{{base_url}}"], "path": ["api", "executions", ":execution_id", "stages"], "variable": [{ "key": "execution_id", "value": "" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Artifacts",
+      "item": [
+        {
+          "name": "Get artifact",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/artifacts/:artifact_id", "host": ["{{base_url}}"], "path": ["api", "artifacts", ":artifact_id"], "variable": [{ "key": "artifact_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "List execution artifacts",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/executions/:execution_id/artifacts", "host": ["{{base_url}}"], "path": ["api", "executions", ":execution_id", "artifacts"], "variable": [{ "key": "execution_id", "value": "" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Uploads",
+      "item": [
+        {
+          "name": "Upload file",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "file", "type": "file", "src": "" }]
+            },
+            "url": { "raw": "{{base_url}}/api/uploads", "host": ["{{base_url}}"], "path": ["api", "uploads"] },
+            "description": "Upload a document or image for pipeline intake. Returns the uploaded file path."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Usage",
+      "item": [
+        {
+          "name": "Conversation usage",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/conversations/:conversation_id/usage", "host": ["{{base_url}}"], "path": ["api", "conversations", ":conversation_id", "usage"], "variable": [{ "key": "conversation_id", "value": "" }] }
+          }
+        },
+        {
+          "name": "Usage summary",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/usage/summary", "host": ["{{base_url}}"], "path": ["api", "usage", "summary"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Settings",
+      "item": [
+        {
+          "name": "Get theme",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/settings/theme", "host": ["{{base_url}}"], "path": ["api", "settings", "theme"] }
+          }
+        },
+        {
+          "name": "Save theme",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"theme\": \"dark\"\n}" },
+            "url": { "raw": "{{base_url}}/api/settings/theme", "host": ["{{base_url}}"], "path": ["api", "settings", "theme"] }
+          }
+        }
+      ]
+    }
+  ]
+}

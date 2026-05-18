@@ -1,0 +1,8 @@
+{
+  "name": "Pragna API — Dev",
+  "values": [
+    { "key": "base_url",       "value": "http://localhost:8000",  "enabled": true },
+    { "key": "session_cookie", "value": "",                        "enabled": true }
+  ],
+  "_postman_variable_scope": "environment"
+}

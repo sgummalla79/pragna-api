@@ -1,0 +1,8 @@
+{
+  "name": "Pragna API — Staging",
+  "values": [
+    { "key": "base_url",       "value": "https://api-staging.sgummallaworks.com/pragna", "enabled": true },
+    { "key": "session_cookie", "value": "",                                               "enabled": true }
+  ],
+  "_postman_variable_scope": "environment"
+}

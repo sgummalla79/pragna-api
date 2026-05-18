@@ -1,0 +1,8 @@
+{
+  "name": "Pragna API — Production",
+  "values": [
+    { "key": "base_url",       "value": "https://api.sgummallaworks.com/pragna", "enabled": true },
+    { "key": "session_cookie", "value": "",                                       "enabled": true }
+  ],
+  "_postman_variable_scope": "environment"
+}
