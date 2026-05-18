@@ -34,6 +34,7 @@ from repositories.user_llm_models_repository import UserLLMModelsRepository
 from repositories.model_pricing_repository import ModelPricingRepository
 from repositories.model_catalog_repository import ModelCatalogRepository
 from repositories.provider_registry_repository import ProviderRegistryRepository
+from repositories.skill_version_repository import SkillVersionRepository
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class DBContext:
     model_pricing:   ModelPricingRepository
     model_catalog:     ModelCatalogRepository
     provider_registry: ProviderRegistryRepository
+    skill_versions:    SkillVersionRepository
 
 
 @asynccontextmanager
@@ -108,6 +110,7 @@ async def get_db():
             model_pricing = ModelPricingRepository(pool),
             model_catalog     = ModelCatalogRepository(pool),
             provider_registry = ProviderRegistryRepository(pool),
+            skill_versions    = SkillVersionRepository(pool),
         )
 
         log.info("DBContext ready — all repositories initialised")

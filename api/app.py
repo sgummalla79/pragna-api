@@ -50,6 +50,7 @@ from api.routes.usage import router as usage_router
 from api.routes.uploads import router as uploads_router
 from api.routes.settings import router as settings_router
 from api.routes.models import router as models_router
+from api.routes.v2.skills import router as v2_skills_router
 
 from framework.engine import SkillEngine
 from framework.registry import SkillRegistry
@@ -215,3 +216,18 @@ app.include_router(usage_router)
 app.include_router(uploads_router)
 app.include_router(settings_router)
 app.include_router(models_router)
+
+# ── v1 alias — /api/v1/* mirrors /api/* ──────────────────────────────────────
+app.include_router(skills_router,        prefix="/v1")
+app.include_router(agents_router,        prefix="/v1")
+app.include_router(providers_router,     prefix="/v1")
+app.include_router(conversations_router, prefix="/v1")
+app.include_router(executions_router,    prefix="/v1")
+app.include_router(artifacts_router,     prefix="/v1")
+app.include_router(usage_router,         prefix="/v1")
+app.include_router(uploads_router,       prefix="/v1")
+app.include_router(settings_router,      prefix="/v1")
+app.include_router(models_router,        prefix="/v1")
+
+# ── v2 — skill-level versioning ───────────────────────────────────────────────
+app.include_router(v2_skills_router)
