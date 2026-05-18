@@ -17,7 +17,7 @@ spec:
         - name: ghcr-pull-secret
       containers:
         - name: pragna-api
-          image: ghcr.io/sgummalla79/pragna-api:latest
+          image: ghcr.io/sgummalla79/pragna-api:staging
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
