@@ -51,6 +51,7 @@ from api.routes.uploads import router as uploads_router
 from api.routes.settings import router as settings_router
 from api.routes.models import router as models_router
 from api.routes.v2.skills import router as v2_skills_router
+from api.routes.docs import router as docs_router
 
 from framework.engine import SkillEngine
 from framework.registry import SkillRegistry
@@ -144,10 +145,11 @@ async def lifespan(app: FastAPI):
 
 
 _ROOT_PATH = os.getenv("ROOT_PATH", "")
-_LOGIN_URL = f"{_ROOT_PATH}/auth/initiate?redirect_to={{base_url}}{_ROOT_PATH}/docs"
 
 app = FastAPI(
     root_path=_ROOT_PATH,
+    docs_url=None,
+    redoc_url=None,
     title="Pragna API",
     version="1.0.0",
     description=f"""
@@ -188,10 +190,7 @@ Pipeline and chat endpoints return `text/event-stream`. Each event is a JSON obj
         {"name": "v2 / Skills",       "description": "**API v2** — Skill-level versioning: drafts per user, global published versions"},
     ],
     lifespan=lifespan,
-    swagger_ui_parameters={
-        "defaultModelsExpandDepth": -1,
-        "withCredentials": True,
-    },
+    swagger_ui_parameters={"defaultModelsExpandDepth": -1},
 )
 
 _ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
@@ -205,6 +204,7 @@ app.add_middleware(
 )
 app.add_middleware(RequestLoggerMiddleware)
 
+app.include_router(docs_router)
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(providers_router)
