@@ -156,7 +156,6 @@ async def update_agent(
                 for a in oob_agents
             ]
         draft = await db.user_skill_v2.create_draft(
-            user_id       = current_user.sub,
             user_skill_id = user_skill.id,
             base_agents   = base_agents,
         )

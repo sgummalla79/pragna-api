@@ -21,13 +21,13 @@ class UserSkillVersion:
     version_number: int
     status:         str   # 'draft' | 'published'
     created_at:     str
+    modified_at:    str
     agents:         list[UserSkillAgent]
 
 
 @dataclass
 class UserSkillAgent:
     id:                    str
-    user_id:               str
     user_skill_version_id: str
     skill_agent_id:        str
     content:               str
@@ -63,7 +63,7 @@ class UserSkillV2Repository(BaseRepository):
 
     async def list_versions(self, user_skill_id: str) -> list[UserSkillVersion]:
         rows = await self._fetchall(
-            "SELECT id, user_skill_id, version_number, status, created_at"
+            "SELECT id, user_skill_id, version_number, status, created_at, modified_at"
             " FROM user_skill_versions WHERE user_skill_id = %s"
             " ORDER BY version_number DESC",
             (user_skill_id,),
@@ -76,7 +76,7 @@ class UserSkillV2Repository(BaseRepository):
 
     async def get_version(self, user_skill_id: str, version_number: int) -> Optional[UserSkillVersion]:
         row = await self._fetchone(
-            "SELECT id, user_skill_id, version_number, status, created_at"
+            "SELECT id, user_skill_id, version_number, status, created_at, modified_at"
             " FROM user_skill_versions"
             " WHERE user_skill_id = %s AND version_number = %s",
             (user_skill_id, version_number),
@@ -88,7 +88,7 @@ class UserSkillV2Repository(BaseRepository):
 
     async def get_draft(self, user_skill_id: str) -> Optional[UserSkillVersion]:
         row = await self._fetchone(
-            "SELECT id, user_skill_id, version_number, status, created_at"
+            "SELECT id, user_skill_id, version_number, status, created_at, modified_at"
             " FROM user_skill_versions"
             " WHERE user_skill_id = %s AND status = 'draft'"
             " LIMIT 1",
@@ -101,7 +101,6 @@ class UserSkillV2Repository(BaseRepository):
 
     async def create_draft(
         self,
-        user_id:       str,
         user_skill_id: str,
         base_agents:   list[UserSkillAgent],
     ) -> UserSkillVersion:
@@ -111,7 +110,7 @@ class UserSkillV2Repository(BaseRepository):
         version_row = await self._fetchone(
             "INSERT INTO user_skill_versions (user_skill_id, version_number, status)"
             " VALUES (%s, %s, 'draft')"
-            " RETURNING id, user_skill_id, version_number, status, created_at",
+            " RETURNING id, user_skill_id, version_number, status, created_at, modified_at",
             (user_skill_id, next_version),
         )
         version_id = str(version_row[0])
@@ -119,9 +118,9 @@ class UserSkillV2Repository(BaseRepository):
         for agent in base_agents:
             await self._exec(
                 "INSERT INTO user_skill_agent_versions"
-                " (user_id, user_skill_version_id, skill_agent_id, content, model_id)"
-                " VALUES (%s, %s, %s, %s, %s)",
-                (user_id, version_id, agent.skill_agent_id, agent.content, agent.model_id),
+                " (user_skill_version_id, skill_agent_id, content, model_id)"
+                " VALUES (%s, %s, %s, %s)",
+                (version_id, agent.skill_agent_id, agent.content, agent.model_id),
             )
 
         agents = await self._get_agents(version_id)
@@ -146,7 +145,7 @@ class UserSkillV2Repository(BaseRepository):
         version_row = await self._fetchone(
             "UPDATE user_skill_versions SET status = 'published'"
             " WHERE id = %s"
-            " RETURNING id, user_skill_id, version_number, status, created_at",
+            " RETURNING id, user_skill_id, version_number, status, created_at, modified_at",
             (draft_version_id,),
         )
         await self._exec(
@@ -175,7 +174,7 @@ class UserSkillV2Repository(BaseRepository):
 
     async def _get_agents(self, user_skill_version_id: str) -> list[UserSkillAgent]:
         rows = await self._fetchall(
-            "SELECT id, user_id, user_skill_version_id, skill_agent_id,"
+            "SELECT id, user_skill_version_id, skill_agent_id,"
             "       content, model_id, created_at, modified_at"
             " FROM user_skill_agent_versions WHERE user_skill_version_id = %s"
             " ORDER BY skill_agent_id",
@@ -217,14 +216,15 @@ class UserSkillV2Repository(BaseRepository):
         return UserSkillVersion(
             id=str(row[0]), user_skill_id=str(row[1]),
             version_number=int(row[2]), status=row[3],
-            created_at=str(row[4]), agents=agents,
+            created_at=str(row[4]), modified_at=str(row[5]),
+            agents=agents,
         )
 
     @staticmethod
     def _row_to_agent(row) -> UserSkillAgent:
         return UserSkillAgent(
-            id=str(row[0]), user_id=row[1], user_skill_version_id=str(row[2]),
-            skill_agent_id=str(row[3]), content=row[4],
-            model_id=str(row[5]) if row[5] else None,
-            created_at=str(row[6]), modified_at=str(row[7]),
+            id=str(row[0]), user_skill_version_id=str(row[1]),
+            skill_agent_id=str(row[2]), content=row[3],
+            model_id=str(row[4]) if row[4] else None,
+            created_at=str(row[5]), modified_at=str(row[6]),
         )
