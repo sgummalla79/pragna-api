@@ -22,7 +22,6 @@ AUTH0_CLIENT_ID     = os.getenv("AUTH0_CLIENT_ID", "")
 AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET", "")
 AUTH0_CALLBACK_URL  = os.getenv("AUTH0_CALLBACK_URL", "http://localhost:5173/callback")
 JWT_SECRET          = os.getenv("JWT_SECRET", "change-me")
-FRONTEND_URL        = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 
 @dataclass

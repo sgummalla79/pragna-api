@@ -10,16 +10,37 @@ GET  /auth/me            return current user from cookie (bootstrap on mount)
 """
 
 import os
+import json
+import base64
 import logging
 import time
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
-from utils.auth import AuthUser, get_current_user, _make_session_token, FRONTEND_URL
+from utils.auth import AuthUser, get_current_user, _make_session_token
+
+
+def _validate_redirect_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+    except Exception:
+        return False
+
+
+def _encode_state(data: dict) -> str:
+    return base64.urlsafe_b64encode(json.dumps(data).encode()).decode()
+
+
+def _decode_state(state: str) -> dict:
+    try:
+        return json.loads(base64.urlsafe_b64decode(state.encode()).decode())
+    except Exception:
+        return {}
 
 log = logging.getLogger(__name__)
 
@@ -148,18 +169,22 @@ async def list_connections():
     summary="Redirect to Auth0 authorize",
     responses={302: {"description": "Redirect to Auth0 /authorize"}},
 )
-async def initiate(connection: str = ""):
+async def initiate(redirect_to: str = "", connection: str = ""):
+    if redirect_to and not _validate_redirect_url(redirect_to):
+        raise HTTPException(status_code=400, detail="Invalid redirect_to URL")
+
     params = {
         "response_type": "code",
         "client_id":     AUTH0_CLIENT_ID,
         "redirect_uri":  AUTH0_CALLBACK_URL,
         "scope":         "openid profile email",
+        "state":         _encode_state({"redirect_to": redirect_to}),
     }
     if connection:
         params["connection"] = connection
 
     url = f"https://{AUTH0_DOMAIN}/authorize?{urlencode(params)}"
-    log.info("Auth0 initiate → redirect_uri=%s", AUTH0_CALLBACK_URL)
+    log.info("Auth0 initiate → redirect_uri=%s redirect_to=%s", AUTH0_CALLBACK_URL, redirect_to)
     return RedirectResponse(url)
 
 
@@ -171,9 +196,14 @@ async def initiate(connection: str = ""):
     summary="Auth0 OAuth callback — set session cookie",
     responses={302: {"description": "Redirect to SPA with session cookie set"}},
 )
-async def callback(code: str, request: Request, error: str = ""):
+async def callback(code: str, request: Request, state: str = "", error: str = ""):
+    state_data  = _decode_state(state)
+    redirect_to = state_data.get("redirect_to", "")
+
     if error:
-        return RedirectResponse(f"{FRONTEND_URL}/login?error={error}")
+        if redirect_to:
+            return RedirectResponse(f"{redirect_to}?error={error}")
+        raise HTTPException(status_code=400, detail=f"Auth error: {error}")
 
     log.info("Auth0 callback — code=%s...", code[:8])
     try:
@@ -202,7 +232,9 @@ async def callback(code: str, request: Request, error: str = ""):
 
     except Exception as exc:
         log.error("OAuth callback error: %s", exc)
-        return RedirectResponse(f"{FRONTEND_URL}/login?error=auth_failed")
+        if redirect_to:
+            return RedirectResponse(f"{redirect_to}?error=auth_failed")
+        raise HTTPException(status_code=502, detail="Authentication failed")
 
     user = AuthUser(
         sub     = userinfo["sub"],
@@ -215,9 +247,10 @@ async def callback(code: str, request: Request, error: str = ""):
     await db.users.upsert(user.sub, user.email, user.name, user.picture)
 
     token    = _make_session_token(user)
-    redirect = RedirectResponse(f"{FRONTEND_URL}/")
+    destination = redirect_to or "/"
+    redirect = RedirectResponse(destination)
     _set_session_cookie(redirect, token)
-    log.info("Auth0 callback success — user=%s", user.email)
+    log.info("Auth0 callback success — user=%s redirect_to=%s", user.email, destination)
     return redirect
 
 
