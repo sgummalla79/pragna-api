@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/skills")
 
 @router.get(
     "",
-    tags=["Skills"],
+    tags=["v1 / Skills"],
     summary="List all available skills with install status",
     responses={200: {"description": "All skills with installed flag and pipeline stages"}},
 )
@@ -64,7 +64,7 @@ class ClassifyChoiceRequest(BaseModel):
 
 @router.post(
     "/classify-choice",
-    tags=["Skills"],
+    tags=["v1 / Skills"],
     summary="LLM-classify which skill the user chose from a list",
     responses={200: {"description": "Matched skill_id or 'none'"}},
 )
@@ -117,7 +117,7 @@ class _BriefValidation(BaseModel):
 
 @router.post(
     "/{skill_id}/validate-brief",
-    tags=["Skills"],
+    tags=["v1 / Skills"],
     summary="Validate brief relevance and sufficiency for a skill",
     responses={
         200: {"description": "{valid, reason, message}"},
@@ -188,7 +188,7 @@ async def validate_brief(
 
 @router.post(
     "/{skill_id}",
-    tags=["Skills"],
+    tags=["v1 / Skills"],
     summary="Install a skill for the current user",
     responses={
         200: {"description": "Skill installed (or already installed)"},
@@ -220,7 +220,7 @@ async def install_skill(
 
 @router.delete(
     "/{skill_id}",
-    tags=["Skills"],
+    tags=["v1 / Skills"],
     summary="Uninstall a skill",
     responses={
         200: {"description": "Skill uninstalled"},
@@ -245,7 +245,7 @@ async def uninstall_skill(
 
 @router.get(
     "/{skill_id}/suggest-config",
-    tags=["Skills"],
+    tags=["v1 / Skills"],
     summary="Smart-pick provider/model for each agent in a skill",
     responses={200: {"description": "Suggested provider/model per agent key"}},
 )

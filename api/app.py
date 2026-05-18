@@ -172,19 +172,20 @@ Pipeline and chat endpoints return `text/event-stream`. Each event is a JSON obj
 - **Conversation** — a chat session that may contain one or more skill executions
 """,
     openapi_tags=[
-        {"name": "Health",         "description": "Service health and version info"},
-        {"name": "Auth",           "description": "Auth0 OAuth flow, session management"},
-        {"name": "Conversations",  "description": "Create and manage chat conversations"},
-        {"name": "Chat",           "description": "Free-form chat SSE streaming"},
-        {"name": "Skills",         "description": "Skill discovery, install, validate, and agent config"},
-        {"name": "Agents",         "description": "Agent prompt versioning and model assignment"},
-        {"name": "Executions",     "description": "Start, reply, retry, and audit skill pipeline runs"},
-        {"name": "Artifacts",      "description": "Access documents produced by skill pipelines"},
-        {"name": "Providers",      "description": "LLM provider connection and model management"},
-        {"name": "Models",         "description": "Active model list for UI dropdowns"},
-        {"name": "Uploads",        "description": "File upload (documents and images) for pipeline intake"},
-        {"name": "Usage",          "description": "Token usage and cost tracking"},
-        {"name": "Settings",       "description": "User preferences (theme, etc.)"},
+        {"name": "Health",            "description": "Service health and version info"},
+        {"name": "Auth",              "description": "Auth0 OAuth flow, session management"},
+        {"name": "Conversations",     "description": "Create and manage chat conversations"},
+        {"name": "Chat",              "description": "Free-form chat SSE streaming"},
+        {"name": "Executions",        "description": "Start, reply, retry, and audit skill pipeline runs"},
+        {"name": "Artifacts",         "description": "Access documents produced by skill pipelines"},
+        {"name": "Providers",         "description": "LLM provider connection and model management"},
+        {"name": "Models",            "description": "Active model list for UI dropdowns"},
+        {"name": "Uploads",           "description": "File upload (documents and images) for pipeline intake"},
+        {"name": "Usage",             "description": "Token usage and cost tracking"},
+        {"name": "Settings",          "description": "User preferences (theme, etc.)"},
+        {"name": "v1 / Skills",       "description": "**API v1** — Skill discovery, install, validate, and agent config"},
+        {"name": "v1 / Agents",       "description": "**API v1** — Per-agent prompt versioning and model assignment"},
+        {"name": "v2 / Skills",       "description": "**API v2** — Skill-level versioning: drafts per user, global published versions"},
     ],
     lifespan=lifespan,
     swagger_ui_parameters={
@@ -217,17 +218,17 @@ app.include_router(uploads_router)
 app.include_router(settings_router)
 app.include_router(models_router)
 
-# ── v1 alias — /api/v1/* mirrors /api/* ──────────────────────────────────────
-app.include_router(skills_router,        prefix="/v1")
-app.include_router(agents_router,        prefix="/v1")
-app.include_router(providers_router,     prefix="/v1")
-app.include_router(conversations_router, prefix="/v1")
-app.include_router(executions_router,    prefix="/v1")
-app.include_router(artifacts_router,     prefix="/v1")
-app.include_router(usage_router,         prefix="/v1")
-app.include_router(uploads_router,       prefix="/v1")
-app.include_router(settings_router,      prefix="/v1")
-app.include_router(models_router,        prefix="/v1")
+# ── v1 alias — /api/v1/* mirrors /api/* (hidden from docs to avoid duplication) ──
+app.include_router(skills_router,        prefix="/v1", include_in_schema=False)
+app.include_router(agents_router,        prefix="/v1", include_in_schema=False)
+app.include_router(providers_router,     prefix="/v1", include_in_schema=False)
+app.include_router(conversations_router, prefix="/v1", include_in_schema=False)
+app.include_router(executions_router,    prefix="/v1", include_in_schema=False)
+app.include_router(artifacts_router,     prefix="/v1", include_in_schema=False)
+app.include_router(usage_router,         prefix="/v1", include_in_schema=False)
+app.include_router(uploads_router,       prefix="/v1", include_in_schema=False)
+app.include_router(settings_router,      prefix="/v1", include_in_schema=False)
+app.include_router(models_router,        prefix="/v1", include_in_schema=False)
 
 # ── v2 — skill-level versioning ───────────────────────────────────────────────
 app.include_router(v2_skills_router)

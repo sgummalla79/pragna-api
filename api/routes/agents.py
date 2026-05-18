@@ -34,7 +34,7 @@ class UpdateModelRequest(BaseModel):
 
 @router.get(
     "/{skill_id}/agents",
-    tags=["Agents"],
+    tags=["v1 / Agents"],
     summary="List agents and their published/draft prompt versions",
     responses={200: {"description": "All agents with published and draft version info"}},
 )
@@ -93,7 +93,7 @@ async def list_agents(
 
 @router.put(
     "/{skill_id}/agents/{agent_key}/draft",
-    tags=["Agents"],
+    tags=["v1 / Agents"],
     summary="Save or update an agent prompt draft",
     responses={
         200: {"description": "Draft saved with version number"},
@@ -124,7 +124,7 @@ async def save_draft(
 
 @router.delete(
     "/{skill_id}/agents/{agent_key}/draft",
-    tags=["Agents"],
+    tags=["v1 / Agents"],
     summary="Discard agent prompt draft",
     responses={
         200: {"description": "Draft discarded"},
@@ -151,7 +151,7 @@ async def discard_draft(
 
 @router.post(
     "/{skill_id}/agents/{agent_key}/publish",
-    tags=["Agents"],
+    tags=["v1 / Agents"],
     summary="Publish agent draft",
     responses={
         200: {"description": "Draft published as new version"},
@@ -182,7 +182,7 @@ async def publish_agent(
 
 @router.patch(
     "/{skill_id}/agents/{agent_key}/model",
-    tags=["Agents"],
+    tags=["v1 / Agents"],
     summary="Set default provider/model for an agent",
     responses={
         200: {"description": "Default model updated"},
@@ -215,7 +215,7 @@ async def update_agent_model(
 
 @router.post(
     "/{skill_id}/publish",
-    tags=["Agents"],
+    tags=["v1 / Agents"],
     summary="Publish all agent drafts for a skill atomically",
     responses={
         200: {"description": "All drafts published"},
