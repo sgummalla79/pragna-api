@@ -155,7 +155,7 @@ app = FastAPI(
 Pragna runs structured AI pipelines ("skills") to produce Architecture Recommendation Documents and supports free-form chat.
 
 ### Authentication
-**[Click here to log in]({_ROOT_PATH}/auth/initiate?redirect_to=../docs)** — completes Auth0 login and returns you to this page. All API requests will then be authenticated automatically.
+**[Click here to log in]({_ROOT_PATH}/auth/initiate)** — completes Auth0 login and returns you to this page. All API requests will then be authenticated automatically.
 
 All `/api/*` endpoints require a valid session cookie.
 Auth routes (`/auth/*`) are public.
