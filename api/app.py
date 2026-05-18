@@ -142,22 +142,27 @@ async def lifespan(app: FastAPI):
     logger.info("Pragna shutting down")
 
 
+_ROOT_PATH = os.getenv("ROOT_PATH", "")
+_LOGIN_URL = f"{_ROOT_PATH}/auth/initiate?redirect_to={{base_url}}{_ROOT_PATH}/docs"
+
 app = FastAPI(
-    root_path=os.getenv("ROOT_PATH", ""),
+    root_path=_ROOT_PATH,
     title="Pragna API",
     version="1.0.0",
-    description="""
+    description=f"""
 ## Pragna — Multi-Agent AI Platform
 
 Pragna runs structured AI pipelines ("skills") to produce Architecture Recommendation Documents and supports free-form chat.
 
 ### Authentication
-All `/api/*` endpoints require a valid session cookie (set via `/auth/callback` or `/auth/token`).
+**[Click here to log in]({_ROOT_PATH}/auth/initiate?redirect_to=../docs)** — completes Auth0 login and returns you to this page. All API requests will then be authenticated automatically.
+
+All `/api/*` endpoints require a valid session cookie.
 Auth routes (`/auth/*`) are public.
 
 ### SSE Streaming
 Pipeline and chat endpoints return `text/event-stream`. Each event is a JSON object:
-`data: {"type": "<event_type>", ...}`.
+`data: {{"type": "<event_type>", ...}}`.
 
 ### Key Concepts
 - **Skill** — a named multi-stage agent pipeline (e.g. `architect`)
@@ -183,6 +188,7 @@ Pipeline and chat endpoints return `text/event-stream`. Each event is a JSON obj
     lifespan=lifespan,
     swagger_ui_parameters={
         "defaultModelsExpandDepth": -1,
+        "withCredentials": True,
     },
 )
 
