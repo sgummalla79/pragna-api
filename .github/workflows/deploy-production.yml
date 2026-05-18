@@ -56,6 +56,9 @@ jobs:
       - name: Load test environment
         run: grep -v '^#' .env.test | grep -v '^$' >> $GITHUB_ENV
 
+      - name: Check migration naming and cross-version contamination
+        run: python scripts/check_migrations.py
+
       - name: Run unit + e2e tests
         run: pytest tests/unit/ tests/e2e/ -v -s --tb=long -m "not live" --log-cli-level=INFO
 
