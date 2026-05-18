@@ -32,7 +32,7 @@ spec:
             - containerPort: 5432
           env:
             - name: POSTGRES_DB
-              value: pragna_staging
+              value: pragna_api_staging
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
