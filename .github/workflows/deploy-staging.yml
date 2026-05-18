@@ -1,0 +1,163 @@
+name: Staging CI/CD
+
+on:
+  push:
+    branches:
+      - staging
+
+env:
+  OWNER: ${{ github.repository_owner }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+
+  # ── Tests ──────────────────────────────────────────────────────────────────
+  test:
+    name: Backend tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER:     pragna
+          POSTGRES_PASSWORD: pragna_dev
+          POSTGRES_DB:       pragna_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pragna"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Load test environment
+        run: grep -v '^#' .env.test | grep -v '^$' >> $GITHUB_ENV
+
+      - name: Run unit + e2e tests
+        run: pytest tests/unit/ tests/e2e/ -v -s --tb=long -m "not live" --log-cli-level=INFO
+
+  # ── Build & push ───────────────────────────────────────────────────────────
+  build:
+    name: Build staging image
+    needs: [test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.sha.outputs.short }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          no-cache: true
+          tags: |
+            ghcr.io/${{ env.OWNER }}/pragna-api:staging
+            ghcr.io/${{ env.OWNER }}/pragna-api:staging-${{ steps.sha.outputs.short }}
+
+  # ── Deploy ─────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to staging
+    needs: [build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to staging cluster
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -e
+            SHA="${{ needs.build.outputs.tag }}"
+            TAG="staging-${SHA}"
+
+            echo "=== Running migrations ==="
+            DB_URL=$(kubectl get secret pragna-staging-secrets -n pragna-staging \
+              -o jsonpath='{.data.DATABASE_URL}' | base64 --decode)
+            MIGRATION_POD="alembic-staging-${SHA}"
+            kubectl run "${MIGRATION_POD}" \
+              --image=ghcr.io/${{ github.repository_owner }}/pragna-api:${TAG} \
+              --restart=Never \
+              -n pragna-staging \
+              --env="DATABASE_URL=${DB_URL}" \
+              --overrides='{"spec":{"imagePullSecrets":[{"name":"ghcr-pull-secret"}]}}' \
+              -- python -m alembic upgrade head
+
+            echo "Waiting for migration pod..."
+            for i in $(seq 1 60); do
+              PHASE=$(kubectl get pod "${MIGRATION_POD}" -n pragna-staging \
+                -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
+              echo "  attempt $i: phase=${PHASE}"
+              if [ "${PHASE}" = "Succeeded" ]; then break; fi
+              if [ "${PHASE}" = "Failed" ]; then
+                kubectl logs "${MIGRATION_POD}" -n pragna-staging || true
+                kubectl delete pod "${MIGRATION_POD}" -n pragna-staging --ignore-not-found
+                exit 1
+              fi
+              if [ "$i" = "6" ]; then
+                kubectl describe pod "${MIGRATION_POD}" -n pragna-staging || true
+              fi
+              sleep 5
+            done
+            kubectl logs "${MIGRATION_POD}" -n pragna-staging || true
+            kubectl delete pod "${MIGRATION_POD}" -n pragna-staging --ignore-not-found
+            echo "=== Migrations complete ==="
+
+            echo "=== Rolling out ${TAG} ==="
+            kubectl set image deployment/pragna-api \
+              pragna-api=ghcr.io/${{ github.repository_owner }}/pragna-api:${TAG} \
+              -n pragna-staging
+            kubectl rollout status deployment/pragna-api -n pragna-staging --timeout=120s
+
+            echo "=== Health check ==="
+            for i in $(seq 1 12); do
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                https://pragna-staging.sgummallaworks.com/health 2>/dev/null || echo "000")
+              if [ "$STATUS" = "200" ]; then echo "✓ Healthy (attempt $i)"; break; fi
+              echo "Attempt $i: HTTP $STATUS — retrying in 10s..."
+              sleep 10
+            done
+
+            kubectl get pods -n pragna-staging
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Staging deploy: \`staging-${{ needs.build.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "URL: https://pragna-staging.sgummallaworks.com" >> $GITHUB_STEP_SUMMARY
