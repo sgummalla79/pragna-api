@@ -143,6 +143,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
+    root_path=os.getenv("ROOT_PATH", ""),
     title="Pragna API",
     version="1.0.0",
     description="""
