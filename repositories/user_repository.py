@@ -46,54 +46,49 @@ class UserRepository(BaseRepository):
         )
         return self._row_to_user(row) if row else None
 
-    async def save_llm_provider_key(self, user_id: str, key_name: str, encrypted_value: str) -> None:
-        now = datetime.now(timezone.utc).isoformat()
+    async def save_llm_provider_key(
+        self, user_id: str, llm_provider_id: str, encrypted_value: str
+    ) -> None:
         await self._exec(
-            "INSERT INTO user_llm_providers (user_id, key_name, encrypted_value, isactive, updated_at)"
-            " VALUES (%s, %s, %s, TRUE, %s)"
-            " ON CONFLICT (user_id, key_name) DO UPDATE SET"
-            "   encrypted_value = EXCLUDED.encrypted_value,"
-            "   isactive = TRUE,"
-            "   updated_at = EXCLUDED.updated_at",
-            (user_id, key_name, encrypted_value, now),
+            "INSERT INTO user_llm_providers (user_id, llm_provider_id, encrypted_value)"
+            " VALUES (%s, %s, %s)"
+            " ON CONFLICT (user_id, llm_provider_id) DO UPDATE SET"
+            "   encrypted_value = EXCLUDED.encrypted_value",
+            (user_id, llm_provider_id, encrypted_value),
         )
 
     async def get_all_llm_provider_keys(self, user_id: str) -> dict[str, str]:
-        """Return {key_name: encrypted_value} for ACTIVE keys only — used by auth and LLM factory."""
+        """Return {provider_name: encrypted_value} — used by auth and LLM factory."""
         rows = await self._fetchall(
-            "SELECT key_name, encrypted_value FROM user_llm_providers"
-            " WHERE user_id = %s AND isactive = TRUE",
+            "SELECT p.name, u.encrypted_value"
+            " FROM user_llm_providers u"
+            " JOIN llm_providers p ON p.id = u.llm_provider_id"
+            " WHERE u.user_id = %s",
             (user_id,),
         )
         return {r[0]: r[1] for r in rows}
 
-    async def get_llm_provider_key_statuses(self, user_id: str) -> dict[str, bool]:
-        """Return {key_name: isactive} for ALL stored keys — used by the providers UI."""
+    async def get_connected_providers(self, user_id: str) -> set[str]:
+        """Return set of provider names the user has connected."""
         rows = await self._fetchall(
-            "SELECT key_name, isactive FROM user_llm_providers WHERE user_id = %s",
+            "SELECT p.name FROM user_llm_providers u"
+            " JOIN llm_providers p ON p.id = u.llm_provider_id"
+            " WHERE u.user_id = %s",
             (user_id,),
         )
-        return {r[0]: bool(r[1]) for r in rows}
+        return {r[0] for r in rows}
 
-    async def set_llm_provider_key_active(self, user_id: str, key_name: str, isactive: bool) -> None:
-        now = datetime.now(timezone.utc).isoformat()
+    async def delete_llm_provider_key(self, user_id: str, llm_provider_id: str) -> None:
         await self._exec(
-            "UPDATE user_llm_providers SET isactive = %s, updated_at = %s"
-            " WHERE user_id = %s AND key_name = %s",
-            (isactive, now, user_id, key_name),
+            "DELETE FROM user_llm_providers WHERE user_id = %s AND llm_provider_id = %s",
+            (user_id, llm_provider_id),
         )
 
-    async def delete_llm_provider_key(self, user_id: str, key_name: str) -> None:
-        await self._exec(
-            "DELETE FROM user_llm_providers WHERE user_id = %s AND key_name = %s",
-            (user_id, key_name),
-        )
-
-    async def get_llm_provider_id(self, user_id: str, key_name: str) -> Optional[str]:
-        """Return user_llm_providers.id for a given user + provider key, or None."""
+    async def get_llm_provider_id(self, user_id: str, llm_provider_id: str) -> Optional[str]:
+        """Return user_llm_providers.id for a given user + llm_provider_id, or None."""
         row = await self._fetchone(
-            "SELECT id FROM user_llm_providers WHERE user_id = %s AND key_name = %s",
-            (user_id, key_name),
+            "SELECT id FROM user_llm_providers WHERE user_id = %s AND llm_provider_id = %s",
+            (user_id, llm_provider_id),
         )
         return str(row[0]) if row else None
 

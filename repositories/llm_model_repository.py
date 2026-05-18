@@ -10,6 +10,7 @@ from repositories.base import BaseRepository
 class LLMModel:
     id:                       str
     name:                     str
+    llm_provider_id:          Optional[str]
     input_usd_per_1m_tokens:  Decimal
     output_usd_per_1m_tokens: Decimal
     created_at:               str
@@ -27,14 +28,14 @@ class LLMModelRepository(BaseRepository):
         row = await self._fetchone(
             "INSERT INTO llm_models (name, input_usd_per_1m_tokens, output_usd_per_1m_tokens)"
             " VALUES (%s, %s, %s)"
-            " RETURNING id, name, input_usd_per_1m_tokens, output_usd_per_1m_tokens, created_at, modified_at",
+            " RETURNING id, name, llm_provider_id, input_usd_per_1m_tokens, output_usd_per_1m_tokens, created_at, modified_at",
             (name, input_usd_per_1m_tokens, output_usd_per_1m_tokens),
         )
         return self._row(row)
 
     async def get_by_id(self, model_id: str) -> Optional[LLMModel]:
         row = await self._fetchone(
-            "SELECT id, name, input_usd_per_1m_tokens, output_usd_per_1m_tokens, created_at, modified_at"
+            "SELECT id, name, llm_provider_id, input_usd_per_1m_tokens, output_usd_per_1m_tokens, created_at, modified_at"
             " FROM llm_models WHERE id = %s",
             (model_id,),
         )
@@ -42,7 +43,7 @@ class LLMModelRepository(BaseRepository):
 
     async def get_by_name(self, name: str) -> Optional[LLMModel]:
         row = await self._fetchone(
-            "SELECT id, name, input_usd_per_1m_tokens, output_usd_per_1m_tokens, created_at, modified_at"
+            "SELECT id, name, llm_provider_id, input_usd_per_1m_tokens, output_usd_per_1m_tokens, created_at, modified_at"
             " FROM llm_models WHERE name = %s",
             (name,),
         )
@@ -50,7 +51,7 @@ class LLMModelRepository(BaseRepository):
 
     async def list_all(self) -> list[LLMModel]:
         rows = await self._fetchall(
-            "SELECT id, name, input_usd_per_1m_tokens, output_usd_per_1m_tokens, created_at, modified_at"
+            "SELECT id, name, llm_provider_id, input_usd_per_1m_tokens, output_usd_per_1m_tokens, created_at, modified_at"
             " FROM llm_models ORDER BY name"
         )
         return [self._row(r) for r in rows]
@@ -91,7 +92,8 @@ class LLMModelRepository(BaseRepository):
     def _row(row) -> LLMModel:
         return LLMModel(
             id=str(row[0]), name=row[1],
-            input_usd_per_1m_tokens=Decimal(row[2]),
-            output_usd_per_1m_tokens=Decimal(row[3]),
-            created_at=str(row[4]), modified_at=str(row[5]),
+            llm_provider_id=str(row[2]) if row[2] else None,
+            input_usd_per_1m_tokens=Decimal(row[3]),
+            output_usd_per_1m_tokens=Decimal(row[4]),
+            created_at=str(row[5]), modified_at=str(row[6]),
         )
