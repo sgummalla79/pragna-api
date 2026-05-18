@@ -71,9 +71,21 @@ def upgrade() -> None:
         ALTER TABLE user_llm_models DROP COLUMN provider_key
     """))
 
-    # ── 9. Drop old unique constraint and add new one ─────────────────────────
+    # ── 9. Drop old unique constraint (by name or auto-generated) and add new ──
     conn.execute(sa.text("""
-        ALTER TABLE user_llm_models DROP CONSTRAINT uq_user_llm_models
+        DO $$
+        DECLARE
+            cname TEXT;
+        BEGIN
+            SELECT conname INTO cname
+            FROM pg_constraint
+            WHERE conrelid = 'user_llm_models'::regclass
+              AND contype = 'u';
+            IF cname IS NOT NULL THEN
+                EXECUTE 'ALTER TABLE user_llm_models DROP CONSTRAINT ' || quote_ident(cname);
+            END IF;
+        END
+        $$
     """))
     conn.execute(sa.text("""
         ALTER TABLE user_llm_models
