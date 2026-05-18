@@ -1,12 +1,12 @@
 """
-V2 Skill versioning routes — skill-level versioning.
+V2 Skill versioning routes — per-user skill versioning.
 
-GET    /api/v2/skills/{skill_id}/versions            — list all global versions
+GET    /api/v2/skills/{skill_id}/versions            — list user's versions
 GET    /api/v2/skills/{skill_id}/versions/{version}  — get a specific version
-GET    /api/v2/skills/{skill_id}/draft               — get your current draft
-PUT    /api/v2/skills/{skill_id}/agents/{agent_key}  — edit agent (auto-creates draft)
-DELETE /api/v2/skills/{skill_id}/draft               — discard your draft
-POST   /api/v2/skills/{skill_id}/publish             — publish draft → new global version
+GET    /api/v2/skills/{skill_id}/draft               — get current draft
+PUT    /api/v2/skills/{skill_id}/agents/{agent_name} — edit agent (auto-creates draft)
+DELETE /api/v2/skills/{skill_id}/draft               — discard draft
+POST   /api/v2/skills/{skill_id}/publish             — publish draft → new version
 """
 
 import logging
@@ -23,8 +23,7 @@ router = APIRouter(prefix="/skills", tags=["v2 / Skills"])
 
 class UpdateAgentRequest(BaseModel):
     content:  str
-    provider: Optional[str] = None
-    model:    Optional[str] = None
+    model_id: Optional[str] = None
 
 
 class PublishRequest(BaseModel):
@@ -35,65 +34,56 @@ def _version_to_dict(v) -> dict:
     return {
         "id":             v.id,
         "version_number": v.version_number,
-        "published_by":   v.published_by,
-        "published_at":   v.published_at,
-        "notes":          v.notes,
+        "status":         v.status,
+        "created_at":     v.created_at,
         "agents": [
             {
-                "agent_key": a.agent_key,
-                "content":   a.content,
-                "provider":  a.provider,
-                "model":     a.model,
+                "skill_agent_id": a.skill_agent_id,
+                "content":        a.content,
+                "model_id":       a.model_id,
+                "modified_at":    a.modified_at,
             }
             for a in v.agents
         ],
     }
 
 
-def _draft_to_dict(d) -> dict:
-    return {
-        "id":                  d.id,
-        "based_on_version_id": d.based_on_version_id,
-        "created_at":          d.created_at,
-        "updated_at":          d.updated_at,
-        "agents": [
-            {
-                "agent_key":  a.agent_key,
-                "content":    a.content,
-                "provider":   a.provider,
-                "model":      a.model,
-                "updated_at": a.updated_at,
-            }
-            for a in d.agents
-        ],
-    }
+async def _get_user_skill_or_404(db, user_id: str, skill_id: str):
+    skill = await db.skills.get_by_key(skill_id)
+    if not skill:
+        raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found.")
+
+    user_skill = await db.user_skill_v2.get(user_id, skill.id)
+    if not user_skill:
+        raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not installed.")
+
+    return skill, user_skill
 
 
 @router.get(
     "/{skill_id}/versions",
-    summary="List all global versions for a skill",
+    summary="List all versions for this user's skill",
 )
 async def list_versions(
     skill_id:     str,
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    db    = request.app.state.db
-    skill = await db.skills.get_by_key(skill_id)
-    if not skill:
-        raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found.")
+    db = request.app.state.db
+    skill, user_skill = await _get_user_skill_or_404(db, current_user.sub, skill_id)
 
-    versions = await db.skill_versions.list_versions(skill.id)
+    versions = await db.user_skill_v2.list_versions(user_skill.id)
     return {
-        "skill_id": skill_id,
-        "versions": [_version_to_dict(v) for v in versions],
-        "total":    len(versions),
+        "skill_id":        skill_id,
+        "current_version": user_skill.current_version,
+        "versions":        [_version_to_dict(v) for v in versions],
+        "total":           len(versions),
     }
 
 
 @router.get(
     "/{skill_id}/versions/{version_number}",
-    summary="Get a specific global version",
+    summary="Get a specific version",
 )
 async def get_version(
     skill_id:       str,
@@ -101,12 +91,10 @@ async def get_version(
     request:        Request,
     current_user:   AuthUser = Depends(get_current_user),
 ):
-    db    = request.app.state.db
-    skill = await db.skills.get_by_key(skill_id)
-    if not skill:
-        raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found.")
+    db = request.app.state.db
+    skill, user_skill = await _get_user_skill_or_404(db, current_user.sub, skill_id)
 
-    version = await db.skill_versions.get_version(skill.id, version_number)
+    version = await db.user_skill_v2.get_version(user_skill.id, version_number)
     if not version:
         raise HTTPException(status_code=404, detail=f"Version {version_number} not found.")
 
@@ -115,77 +103,94 @@ async def get_version(
 
 @router.get(
     "/{skill_id}/draft",
-    summary="Get your current draft",
+    summary="Get current draft",
 )
 async def get_draft(
     skill_id:     str,
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    db    = request.app.state.db
-    skill = await db.skills.get_by_key(skill_id)
-    if not skill:
-        raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found.")
+    db = request.app.state.db
+    skill, user_skill = await _get_user_skill_or_404(db, current_user.sub, skill_id)
 
-    draft = await db.skill_versions.get_draft(skill.id, current_user.sub)
-    if not draft:
-        return {"skill_id": skill_id, "draft": None}
-
-    return {"skill_id": skill_id, "draft": _draft_to_dict(draft)}
+    draft = await db.user_skill_v2.get_draft(user_skill.id)
+    return {"skill_id": skill_id, "draft": _version_to_dict(draft) if draft else None}
 
 
 @router.put(
-    "/{skill_id}/agents/{agent_key}",
-    summary="Edit an agent's prompt in your draft (auto-creates draft if needed)",
+    "/{skill_id}/agents/{agent_name}",
+    summary="Edit an agent — auto-creates a draft if none exists",
 )
 async def update_agent(
     skill_id:     str,
-    agent_key:    str,
+    agent_name:   str,
     body:         UpdateAgentRequest,
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    db    = request.app.state.db
-    skill = await db.skills.get_by_key(skill_id)
-    if not skill:
-        raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found.")
+    db = request.app.state.db
+    skill, user_skill = await _get_user_skill_or_404(db, current_user.sub, skill_id)
 
-    agent = await db.agents.get_by_key(skill.id, agent_key)
-    if not agent:
-        raise HTTPException(status_code=404, detail=f"Agent '{agent_key}' not found.")
+    skill_agent = await db.agents.get_by_key(skill.id, agent_name)
+    if not skill_agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found.")
 
-    draft = await db.skill_versions.upsert_draft_agent(
-        skill_id  = skill.id,
-        user_id   = current_user.sub,
-        agent_key = agent_key,
-        content   = body.content,
-        provider  = body.provider,
-        model     = body.model,
+    draft = await db.user_skill_v2.get_draft(user_skill.id)
+
+    if not draft:
+        # Create a new draft copying agents from the latest published version
+        base_agents = await db.user_skill_v2.get_latest_published_agents(user_skill.id)
+        if not base_agents:
+            # First ever edit — seed from OOB skill_agents
+            oob_agents = await db.agents.get_by_skill(skill.id)
+            from repositories.user_skill_v2_repository import UserSkillAgent
+            base_agents = [
+                UserSkillAgent(
+                    id="", user_id=current_user.sub,
+                    user_skill_version_id="",
+                    skill_agent_id=a.id,
+                    content=a.content,
+                    model_id=None,
+                    created_at="", modified_at="",
+                )
+                for a in oob_agents
+            ]
+        draft = await db.user_skill_v2.create_draft(
+            user_id       = current_user.sub,
+            user_skill_id = user_skill.id,
+            base_agents   = base_agents,
+        )
+
+    await db.user_skill_v2.upsert_draft_agent(
+        user_skill_version_id = draft.id,
+        skill_agent_id        = skill_agent.id,
+        content               = body.content,
+        model_id              = body.model_id,
     )
-    return {"ok": True, "skill_id": skill_id, "draft": _draft_to_dict(draft)}
+
+    updated_draft = await db.user_skill_v2.get_draft(user_skill.id)
+    return {"ok": True, "skill_id": skill_id, "draft": _version_to_dict(updated_draft)}
 
 
 @router.delete(
     "/{skill_id}/draft",
-    summary="Discard your entire draft",
+    summary="Discard current draft",
 )
 async def discard_draft(
     skill_id:     str,
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    db    = request.app.state.db
-    skill = await db.skills.get_by_key(skill_id)
-    if not skill:
-        raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found.")
+    db = request.app.state.db
+    skill, user_skill = await _get_user_skill_or_404(db, current_user.sub, skill_id)
 
-    await db.skill_versions.discard_draft(skill.id, current_user.sub)
+    await db.user_skill_v2.discard_draft(user_skill.id)
     return {"ok": True, "skill_id": skill_id}
 
 
 @router.post(
     "/{skill_id}/publish",
-    summary="Publish your draft as a new global version",
+    summary="Publish current draft as a new version",
 )
 async def publish_skill(
     skill_id:     str,
@@ -193,37 +198,12 @@ async def publish_skill(
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    db    = request.app.state.db
-    skill = await db.skills.get_by_key(skill_id)
-    if not skill:
-        raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found.")
+    db = request.app.state.db
+    skill, user_skill = await _get_user_skill_or_404(db, current_user.sub, skill_id)
 
-    draft = await db.skill_versions.get_draft(skill.id, current_user.sub)
+    draft = await db.user_skill_v2.get_draft(user_skill.id)
     if not draft or not draft.agents:
         raise HTTPException(status_code=400, detail="No draft to publish.")
 
-    agents = [
-        {
-            "agent_key": a.agent_key,
-            "content":   a.content,
-            "provider":  a.provider,
-            "model":     a.model,
-        }
-        for a in draft.agents
-    ]
-
-    version = await db.skill_versions.publish(
-        skill_id = skill.id,
-        user_id  = current_user.sub,
-        agents   = agents,
-        notes    = body.notes,
-    )
-
-    # Discard draft after successful publish
-    await db.skill_versions.discard_draft(skill.id, current_user.sub)
-
-    return {
-        "ok":      True,
-        "skill_id": skill_id,
-        "version": _version_to_dict(version),
-    }
+    version = await db.user_skill_v2.publish_draft(user_skill.id, draft.id)
+    return {"ok": True, "skill_id": skill_id, "version": _version_to_dict(version)}

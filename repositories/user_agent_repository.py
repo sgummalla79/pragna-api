@@ -42,7 +42,7 @@ class UserAgentRepository(BaseRepository):
         rows = await self._fetchall(
             "SELECT ua.id, ua.user_id, ua.agent_id, ua.current_version, ua.created_at"
             " FROM user_agents ua"
-            " JOIN agents a ON a.id = ua.agent_id"
+            " JOIN skill_agents a ON a.id = ua.agent_id"
             " WHERE ua.user_id = %s AND a.skill_id = %s",
             (user_id, skill_id),
         )

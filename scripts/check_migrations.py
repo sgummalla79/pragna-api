@@ -30,10 +30,9 @@ V1_ONLY_TABLES = {
 }
 
 V2_ONLY_TABLES = {
-    "skill_versions",
-    "skill_version_agents",
-    "skill_drafts",
-    "skill_draft_agents",
+    "user_skills_v2",
+    "user_skill_versions_v2",
+    "user_skill_agents_v2",
 }
 
 VALID_PREFIX_RE = re.compile(r"^\d{4}_(v1|v2|shared)_")

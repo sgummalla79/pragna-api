@@ -1,8 +1,8 @@
 """
-Skill seeder — populates the `skills` and `agents` tables from loaded skills.
+Skill seeder — populates the `skills` and `skill_agents` tables from loaded skills.
 
-Called once at startup after migrations. Idempotent via ON CONFLICT DO NOTHING,
-so safe to run on every restart — only inserts rows that don't exist yet.
+Called once at startup after migrations. Idempotent via ON CONFLICT DO UPDATE,
+so safe to run on every restart — updates OOB content if it changed on disk.
 """
 
 from __future__ import annotations
@@ -18,10 +18,10 @@ async def seed_skills(db: DBContext, skill_registry: SkillRegistry) -> None:
     """
     For each skill loaded from disk:
       1. Upsert into `skills` table
-      2. Upsert each agent into `agents` table
+      2. Upsert each agent into `skill_agents` table
 
     New skills/agents added to disk appear in DB on next restart.
-    Existing rows are updated (name, description, icon, version, label, default_content).
+    Existing rows are updated (name, description, icon, version, display_name, content).
     """
     loaded_skills = skill_registry.list_all()
 
@@ -37,16 +37,16 @@ async def seed_skills(db: DBContext, skill_registry: SkillRegistry) -> None:
         )
         log.info("Seeded skill '%s' (id=%s)", skill.skill_key, skill.id)
 
-        for agent_key in m.ordered_agent_keys:
-            label           = m.agent_labels.get(agent_key)
-            default_content = loaded.agents.get(agent_key, "")
+        for agent_name in m.ordered_agent_keys:
+            display_name = m.agent_labels.get(agent_name)
+            content      = loaded.agents.get(agent_name, "")
 
             await db.agents.upsert(
-                skill_id        = skill.id,
-                agent_key       = agent_key,
-                label           = label,
-                default_content = default_content,
+                skill_id     = skill.id,
+                name         = agent_name,
+                display_name = display_name,
+                content      = content,
             )
-            log.debug("  Seeded agent '%s'", agent_key)
+            log.debug("  Seeded agent '%s'", agent_name)
 
     log.info("Skill seeding complete — %d skill(s)", len(loaded_skills))
