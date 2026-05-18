@@ -1,12 +1,25 @@
 """
 Custom Swagger UI with version switcher.
 
-GET /docs              — version-aware Swagger UI (query: ?version=v1|v2)
-GET /openapi/v1.json   — OpenAPI schema for v1 routes only
-GET /openapi/v2.json   — OpenAPI schema for v2 routes only
+Versioning strategy:
+  - Routes without a version prefix (/api/...) are v1.
+  - Routes at /api/v2/... are v2-specific additions/changes.
+  - /api/v3/... would be v3-specific, and so on.
+
+Each version is cumulative:
+  v1 docs → all routes with no version prefix
+  v2 docs → all v1 routes + all /api/v2/ routes
+  v3 docs → all v1 + v2 routes + all /api/v3/ routes
+  ...
+
+When a new version is added, these endpoints pick it up automatically.
+
+GET /docs              — version-aware Swagger UI (?version=1|2|...)
+GET /openapi/v{n}.json — cumulative OpenAPI schema for version n
 """
 
 import os
+import re
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -18,13 +31,44 @@ _SWAGGER_JS  = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle
 _SWAGGER_CSS = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"
 
 
-def _docs_html(openapi_url: str, title: str, version: str) -> str:
-    v1_url   = f"{_ROOT_PATH}/docs?version=v1"
-    v2_url   = f"{_ROOT_PATH}/docs?version=v2"
+def _path_version(path: str) -> int:
+    """Return the version number a path belongs to. Unversioned paths are v1."""
+    m = re.search(r"^/api/v(\d+)/", path)
+    return int(m.group(1)) if m else 1
+
+
+def _available_versions(schema: dict) -> list[int]:
+    """Detect all API versions present in the schema."""
+    versions = {1}
+    for path in schema.get("paths", {}):
+        versions.add(_path_version(path))
+    return sorted(versions)
+
+
+def _schema_for_version(schema: dict, version: int) -> dict:
+    """Return a cumulative schema containing all routes up to and including `version`."""
+    return {
+        **schema,
+        "info": {
+            **schema.get("info", {}),
+            "title": f"Pragna API — v{version}",
+        },
+        "paths": {
+            path: ops
+            for path, ops in schema.get("paths", {}).items()
+            if _path_version(path) <= version
+        },
+    }
+
+
+def _docs_html(openapi_url: str, title: str, current_version: int, versions: list[int]) -> str:
     login_url = f"{_ROOT_PATH}/auth/initiate"
 
-    v1_active = "active" if version == "v1" else ""
-    v2_active = "active" if version == "v2" else ""
+    version_buttons = ""
+    for v in versions:
+        active = "active" if v == current_version else ""
+        url = f"{_ROOT_PATH}/docs?version={v}"
+        version_buttons += f'<a class="version-btn {active}" href="{url}">v{v}</a>\n'
 
     return f"""<!DOCTYPE html>
 <html>
@@ -41,7 +85,7 @@ def _docs_html(openapi_url: str, title: str, version: str) -> str:
       color: #fff;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       padding: 10px 20px;
       font-family: sans-serif;
       font-size: 14px;
@@ -51,10 +95,7 @@ def _docs_html(openapi_url: str, title: str, version: str) -> str:
       box-shadow: 0 2px 6px rgba(0,0,0,0.4);
     }}
 
-    #version-bar .label {{
-      opacity: 0.6;
-      margin-right: 4px;
-    }}
+    #version-bar .label {{ opacity: 0.6; margin-right: 4px; }}
 
     #version-bar a.version-btn {{
       text-decoration: none;
@@ -67,10 +108,7 @@ def _docs_html(openapi_url: str, title: str, version: str) -> str:
       transition: all 0.15s;
     }}
 
-    #version-bar a.version-btn:hover {{
-      color: #fff;
-      border-color: #555;
-    }}
+    #version-bar a.version-btn:hover {{ color: #fff; border-color: #555; }}
 
     #version-bar a.version-btn.active {{
       color: #fff;
@@ -90,9 +128,7 @@ def _docs_html(openapi_url: str, title: str, version: str) -> str:
       transition: background 0.15s;
     }}
 
-    #version-bar .login-btn:hover {{
-      background: #2563eb;
-    }}
+    #version-bar .login-btn:hover {{ background: #2563eb; }}
 
     .swagger-ui .topbar {{ display: none; }}
   </style>
@@ -101,8 +137,7 @@ def _docs_html(openapi_url: str, title: str, version: str) -> str:
 
 <div id="version-bar">
   <span class="label">API version:</span>
-  <a class="version-btn {v1_active}" href="{v1_url}">v1</a>
-  <a class="version-btn {v2_active}" href="{v2_url}">v2</a>
+  {version_buttons}
   <a class="login-btn" href="{login_url}">Log in</a>
 </div>
 
@@ -112,11 +147,11 @@ def _docs_html(openapi_url: str, title: str, version: str) -> str:
 <script>
   window.onload = function() {{
     SwaggerUIBundle({{
-      url:            "{openapi_url}",
-      dom_id:         "#swagger-ui",
-      presets:        [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
-      layout:         "BaseLayout",
-      deepLinking:    true,
+      url:             "{openapi_url}",
+      dom_id:          "#swagger-ui",
+      presets:         [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+      layout:          "BaseLayout",
+      deepLinking:     true,
       withCredentials: true,
       defaultModelsExpandDepth: -1,
     }});
@@ -127,35 +162,23 @@ def _docs_html(openapi_url: str, title: str, version: str) -> str:
 
 
 @router.get("/docs")
-async def custom_docs(version: str = "v1"):
-    if version == "v2":
-        openapi_url = f"{_ROOT_PATH}/openapi/v2.json"
-        title       = "Pragna API — v2"
-    else:
-        openapi_url = f"{_ROOT_PATH}/openapi/v1.json"
-        title       = "Pragna API — v1"
+async def custom_docs(request: Request, version: int = 1):
+    schema   = request.app.openapi()
+    versions = _available_versions(schema)
+    version  = max(1, min(version, max(versions)))
 
-    return HTMLResponse(_docs_html(openapi_url, title, version))
+    openapi_url = f"{_ROOT_PATH}/openapi/v{version}.json"
+    title       = f"Pragna API — v{version}"
 
-
-@router.get("/openapi/v1.json")
-async def openapi_v1(request: Request):
-    schema = request.app.openapi()
-    return JSONResponse({
-        **schema,
-        "info": {**schema.get("info", {}), "title": "Pragna API — v1"},
-        "paths": {
-            path: ops
-            for path, ops in schema.get("paths", {}).items()
-            if not path.startswith("/api/v2/")
-        },
-    })
+    return HTMLResponse(_docs_html(openapi_url, title, version, versions))
 
 
-@router.get("/openapi/v2.json")
-async def openapi_v2(request: Request):
-    schema = request.app.openapi()
-    return JSONResponse({
-        **schema,
-        "info": {**schema.get("info", {}), "title": "Pragna API — v2"},
-    })
+@router.get("/openapi/v{version}.json")
+async def versioned_openapi(request: Request, version: int):
+    schema   = request.app.openapi()
+    versions = _available_versions(schema)
+
+    if version not in versions:
+        return JSONResponse({"detail": f"Version {version} not found."}, status_code=404)
+
+    return JSONResponse(_schema_for_version(schema, version))
