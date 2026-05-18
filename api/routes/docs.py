@@ -158,9 +158,4 @@ async def openapi_v2(request: Request):
     return JSONResponse({
         **schema,
         "info": {**schema.get("info", {}), "title": "Pragna API — v2"},
-        "paths": {
-            path: ops
-            for path, ops in schema.get("paths", {}).items()
-            if path.startswith("/api/v2/")
-        },
     })
