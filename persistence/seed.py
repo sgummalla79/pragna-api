@@ -29,13 +29,13 @@ async def seed_skills(db: DBContext, skill_registry: SkillRegistry) -> None:
         m = loaded.manifest
 
         skill = await db.skills.upsert(
-            skill_key   = m.id,
-            name        = m.name,
-            description = m.description,
-            icon        = m.icon,
-            version     = m.version,
+            name         = m.id,
+            display_name = m.name,
+            description  = m.description,
+            icon         = m.icon,
+            version      = m.version,
         )
-        log.info("Seeded skill '%s' (id=%s)", skill.skill_key, skill.id)
+        log.info("Seeded skill '%s' (id=%s)", skill.name, skill.id)
 
         for agent_name in m.ordered_agent_keys:
             display_name = m.agent_labels.get(agent_name)

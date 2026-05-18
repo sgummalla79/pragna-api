@@ -40,16 +40,16 @@ async def list_skills(request: Request, current_user: AuthUser = Depends(get_cur
 
     result = []
     for skill in all_skills:
-        manifest = skill_registry.get(skill.skill_key).manifest if skill.skill_key in skill_registry else None
+        manifest = skill_registry.get(skill.name).manifest if skill.name in skill_registry else None
         result.append({
-            "id":          skill.skill_key,
-            "skill_key":   skill.skill_key,
-            "name":        skill.name,
-            "description": skill.description,
-            "icon":        skill.icon,
-            "version":     skill.version,
-            "installed":   skill.id in installed_ids,
-            "pipeline":    manifest.pipeline if manifest else [],
+            "id":           skill.name,
+            "name":         skill.name,
+            "display_name": skill.display_name,
+            "description":  skill.description,
+            "icon":         skill.icon,
+            "version":      skill.version,
+            "installed":    skill.id in installed_ids,
+            "pipeline":     manifest.pipeline if manifest else [],
         })
 
     return {"skills": result}
@@ -160,7 +160,7 @@ async def validate_brief(
         return {"valid": True, "reason": "ok", "message": ""}
 
     system = (
-        f"You evaluate whether a user's brief is suitable for the '{skill.name}' skill.\n"
+        f"You evaluate whether a user's brief is suitable for the '{skill.display_name}' skill.\n"
         f"Skill purpose: {skill.description or 'No description provided.'}\n\n"
         "Evaluate on two criteria:\n"
         "1. RELEVANCE: Is the brief related to software/system architecture or technology?\n"

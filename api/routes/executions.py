@@ -450,7 +450,7 @@ async def invoke_skill(
 
     # Build flow_config and session_agent_config (source: conversation_skill_agents)
     # Slot is included so get_llm_for_agent can smart_pick if provider/model are null
-    registry_entry = request.app.state.skill_registry.get(skill.skill_key)
+    registry_entry = request.app.state.skill_registry.get(skill.name)
     agent_slot_map = registry_entry.manifest.agent_slot_map if registry_entry else {}
 
     flow_config:          dict = {}
@@ -503,13 +503,13 @@ async def invoke_skill(
             _user_keys.get() or {}, get_anthropic_mode(),
         ))
 
-    graph = request.app.state.graphs.get(skill.skill_key, request.app.state.graph)
+    graph = request.app.state.graphs.get(skill.name, request.app.state.graph)
 
     initial_state = AgentState(
         execution_id          = execution_id,
         conversation_id       = conversation_id,
         conversation_skill_id = conversation_skill_id,
-        flow_id               = skill.skill_key,
+        flow_id               = skill.name,
         flow_config           = flow_config,
         session_agent_config  = session_agent_config,
         source_type           = body.source_type or "brief",
@@ -560,7 +560,7 @@ async def reply(
         raise HTTPException(status_code=403, detail="Not authorised.")
 
     skill = await db.skills.get_by_id(conv_skill.skill_id)
-    graph = request.app.state.graphs.get(skill.skill_key, request.app.state.graph) if skill else request.app.state.graph
+    graph = request.app.state.graphs.get(skill.name, request.app.state.graph) if skill else request.app.state.graph
 
     config = {"configurable": {"thread_id": execution_id}}
     await db.conversations.touch(conv.id)
@@ -658,7 +658,7 @@ async def retry(
             fresh_cfg[agent.agent_key] = {"provider": csa.provider, "model": csa.model}
 
     skill = await db.skills.get_by_id(conv_skill.skill_id)
-    graph = request.app.state.graphs.get(skill.skill_key, request.app.state.graph) if skill else request.app.state.graph
+    graph = request.app.state.graphs.get(skill.name, request.app.state.graph) if skill else request.app.state.graph
 
     # Patch the checkpoint with the fresh model config
     config = {"configurable": {"thread_id": execution_id}}
