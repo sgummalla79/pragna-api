@@ -1,0 +1,322 @@
+name: Build and Push
+
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment target'
+        required: true
+        type: choice
+        default: staging
+        options:
+          - staging
+          - production
+      bump:
+        description: 'Version bump (production only)'
+        required: false
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+
+env:
+  OWNER: ${{ github.repository_owner }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+
+  # ── Backend tests ──────────────────────────────────────────────────────────
+  test:
+    name: Backend tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER:     pragna
+          POSTGRES_PASSWORD: pragna_dev
+          POSTGRES_DB:       pragna_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pragna"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ (github.event_name == 'push' || inputs.environment == 'staging') && 'staging' || 'main' }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Load test environment
+        run: grep -v '^#' .env.test | grep -v '^$' >> $GITHUB_ENV
+
+      - name: Run unit + e2e tests
+        run: pytest tests/unit/ tests/e2e/ -v -s --tb=long -m "not live" --log-cli-level=INFO
+
+  # ── Staging deploy ─────────────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to staging
+    needs: [test]
+    if: github.event_name == 'push' || inputs.environment == 'staging'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: staging
+
+      - name: Short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push pragna-api (staging)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          no-cache: true
+          tags: |
+            ghcr.io/${{ env.OWNER }}/pragna-api:staging
+            ghcr.io/${{ env.OWNER }}/pragna-api:staging-${{ steps.sha.outputs.short }}
+
+      - name: Deploy to staging cluster
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -e
+            SHA="${{ steps.sha.outputs.short }}"
+            TAG="staging-${SHA}"
+
+            echo "=== Running migrations on staging ==="
+            DB_URL=$(kubectl get secret pragna-staging-secrets -n pragna-staging \
+              -o jsonpath='{.data.DATABASE_URL}' | base64 --decode)
+            MIGRATION_POD="alembic-staging-${SHA}"
+            kubectl run "${MIGRATION_POD}" \
+              --image=ghcr.io/${{ github.repository_owner }}/pragna-api:${TAG} \
+              --restart=Never \
+              -n pragna-staging \
+              --env="DATABASE_URL=${DB_URL}" \
+              --overrides='{"spec":{"imagePullSecrets":[{"name":"ghcr-pull-secret"}]}}' \
+              -- python -m alembic upgrade head
+            echo "Waiting for migration pod to complete..."
+            for i in $(seq 1 60); do
+              PHASE=$(kubectl get pod "${MIGRATION_POD}" -n pragna-staging \
+                -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
+              echo "  attempt $i: phase=${PHASE}"
+              if [ "${PHASE}" = "Succeeded" ]; then break; fi
+              if [ "${PHASE}" = "Failed" ]; then
+                kubectl logs "${MIGRATION_POD}" -n pragna-staging || true
+                kubectl delete pod "${MIGRATION_POD}" -n pragna-staging --ignore-not-found
+                exit 1
+              fi
+              if [ "$i" = "6" ]; then
+                echo "--- pod describe (diagnosing pending) ---"
+                kubectl describe pod "${MIGRATION_POD}" -n pragna-staging || true
+              fi
+              sleep 5
+            done
+            kubectl logs "${MIGRATION_POD}" -n pragna-staging || true
+            kubectl delete pod "${MIGRATION_POD}" -n pragna-staging --ignore-not-found
+            echo "=== Migrations complete ==="
+
+            echo "=== Deploying API to staging ==="
+            kubectl set image deployment/pragna-api \
+              pragna-api=ghcr.io/${{ github.repository_owner }}/pragna-api:${TAG} \
+              -n pragna-staging
+
+            echo "=== Waiting for rollout ==="
+            kubectl rollout status deployment/pragna-api -n pragna-staging --timeout=120s
+
+            echo "=== Health check ==="
+            for i in $(seq 1 12); do
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                https://pragna-staging.sgummallaworks.com/health 2>/dev/null || echo "000")
+              if [ "$STATUS" = "200" ]; then
+                echo "✓ Staging healthy (attempt $i)"
+                break
+              fi
+              echo "Attempt $i: HTTP $STATUS — retrying in 10s..."
+              sleep 10
+            done
+
+            echo "=== Staging API deploy complete: ${TAG} ==="
+            kubectl get pods -n pragna-staging
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Staging API deploy: \`staging-${{ steps.sha.outputs.short }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "URL: https://pragna-staging.sgummallaworks.com" >> $GITHUB_STEP_SUMMARY
+
+  # ── Production: build & version ───────────────────────────────────────────
+  build:
+    name: Build production image
+    needs: [test]
+    if: inputs.environment == 'production'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    outputs:
+      version: ${{ steps.version.outputs.new }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Bump version
+        id: version
+        run: |
+          current=$(cat VERSION | tr -d '[:space:]')
+          major=$(echo $current | cut -d. -f1)
+          minor=$(echo $current | cut -d. -f2)
+          patch=$(echo $current | cut -d. -f3)
+
+          case "${{ inputs.bump }}" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+
+          new="$major.$minor.$patch"
+          echo "$new" > VERSION
+          echo "new=$new" >> $GITHUB_OUTPUT
+          echo "previous=$current" >> $GITHUB_OUTPUT
+          echo "Bumped $current → $new"
+
+      - name: Generate release notes
+        run: |
+          version="${{ steps.version.outputs.new }}"
+          previous="${{ steps.version.outputs.previous }}"
+          date=$(date -u +"%Y-%m-%d")
+
+          last_bump=$(git log --oneline | grep -m1 "chore: bump version to ${previous}" | awk '{print $1}')
+
+          if [ -z "$last_bump" ]; then
+            commits=$(git log --no-merges --format="%s" -100)
+          else
+            commits=$(git log --no-merges --format="%s" "${last_bump}..HEAD")
+          fi
+
+          features=$(echo "$commits" | grep -E "^feat:"          | sed 's/^feat: /- /'     || true)
+          fixes=$(echo "$commits"    | grep -E "^(fix|hotfix):"  | sed 's/^\(fix\|hotfix\): /- /' || true)
+          docs=$(echo "$commits"     | grep -E "^docs:"          | sed 's/^docs: /- /'     || true)
+          refactor=$(echo "$commits" | grep -E "^refactor:"      | sed 's/^refactor: /- /' || true)
+
+          mkdir -p release-notes
+          {
+            echo "# v${version} — ${date}"
+            echo ""
+            if [ -n "$features" ];  then echo "## Features";      echo "$features";  echo ""; fi
+            if [ -n "$fixes" ];     then echo "## Bug Fixes";     echo "$fixes";     echo ""; fi
+            if [ -n "$refactor" ];  then echo "## Refactoring";   echo "$refactor";  echo ""; fi
+            if [ -n "$docs" ];      then echo "## Documentation"; echo "$docs";      echo ""; fi
+            if [ -z "$features" ] && [ -z "$fixes" ] && [ -z "$refactor" ] && [ -z "$docs" ]; then
+              echo "No notable changes."; echo ""
+            fi
+          } > "release-notes/v${version}.md"
+
+          cat "release-notes/v${version}.md"
+
+      - name: Commit version bump and release notes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION release-notes/
+          git commit -m "chore: bump version to ${{ steps.version.outputs.new }}"
+          git push
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push pragna-api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          no-cache: true
+          tags: |
+            ghcr.io/${{ env.OWNER }}/pragna-api:${{ steps.version.outputs.new }}
+            ghcr.io/${{ env.OWNER }}/pragna-api:latest
+
+  # ── Production: blue-green deploy ─────────────────────────────────────────
+  deploy-production:
+    name: Blue-green deploy to production
+    needs: [build]
+    if: inputs.environment == 'production'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Deploy via blue-green script
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            set -e
+            cd ${{ secrets.VPS_API_REPO_PATH }}
+            git pull
+
+            chmod +x scripts/blue-green-api.sh
+            scripts/blue-green-api.sh \
+              "${{ needs.build.outputs.version }}" \
+              "${{ github.repository_owner }}"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Production API deploy: v${{ needs.build.outputs.version }}" >> $GITHUB_STEP_SUMMARY

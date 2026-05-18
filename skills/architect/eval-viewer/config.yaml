@@ -1,0 +1,24 @@
+# Evaluation configuration for the Architecture Engagement skill.
+# Add test cases to eval-viewer/cases/*.yaml to enable evaluation.
+
+skill_id: architect
+# evaluator_model: set this to a model_id from your active providers (Settings → Providers)
+
+# Stages to evaluate (subset of the pipeline)
+evaluate_stages:
+  - discovery
+  - review
+  - approval
+
+# Scoring criteria applied by the evaluator
+scoring:
+  discovery:
+    - Are questions platform-specific for the detected platform?
+    - Are questions grouped (not asked one at a time)?
+    - Are questions non-redundant with the project brief?
+  review:
+    - Are critical issues specific and actionable?
+    - Does the review check platform limits against official sources?
+  approval:
+    - Does the verdict align with the 7-lens framework?
+    - Are required changes specific and implementable?
