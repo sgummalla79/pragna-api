@@ -39,3 +39,4 @@ htmlcov/
 
 # macOS
 .DS_Store
+k8s/pragna-api-staging/secret.yaml
