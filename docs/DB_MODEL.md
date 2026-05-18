@@ -26,6 +26,9 @@ Stores authenticated users (populated via Auth0 OAuth callback).
 | picture | TEXT | YES | | Avatar URL |
 | created_at | TIMESTAMPTZ | YES | `now()` | |
 | last_login | TIMESTAMPTZ | YES | | Updated on each login |
+| modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on any UPDATE |
+
+**Trigger:** `trg_users_modified_at` — updates `modified_at` on every UPDATE.
 
 ---
 
@@ -39,6 +42,12 @@ Global catalog of supported LLM providers. Seeded at startup; not user-specific.
 | name | TEXT | NO | | UNIQUE — e.g. `anthropic`, `openai` |
 | created_at | TIMESTAMPTZ | NO | `now()` | |
 | modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on any UPDATE |
+
+**Trigger:** `trg_users_modified_at` — updates `modified_at` on every UPDATE.
+
+---
+
+## llm_providers
 
 **Trigger:** `trg_llm_providers_modified_at` — updates `modified_at` on every UPDATE.
 

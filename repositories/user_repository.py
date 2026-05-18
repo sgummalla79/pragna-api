@@ -8,12 +8,13 @@ from repositories.base import BaseRepository
 
 @dataclass
 class User:
-    id:         str
-    email:      str
-    name:       Optional[str]
-    picture:    Optional[str]
-    created_at: str
-    last_login: Optional[str]
+    id:          str
+    email:       str
+    name:        Optional[str]
+    picture:     Optional[str]
+    created_at:  str
+    last_login:  Optional[str]
+    modified_at: str
 
 
 class UserRepository(BaseRepository):
@@ -40,7 +41,7 @@ class UserRepository(BaseRepository):
 
     async def get_by_id(self, user_id: str) -> Optional[User]:
         row = await self._fetchone(
-            "SELECT id, email, name, picture, created_at, last_login"
+            "SELECT id, email, name, picture, created_at, last_login, modified_at"
             " FROM users WHERE id = %s",
             (user_id,),
         )
@@ -126,5 +127,7 @@ class UserRepository(BaseRepository):
     def _row_to_user(row) -> User:
         return User(
             id=row[0], email=row[1], name=row[2],
-            picture=row[3], created_at=str(row[4]), last_login=str(row[5]) if row[5] else None,
+            picture=row[3], created_at=str(row[4]),
+            last_login=str(row[5]) if row[5] else None,
+            modified_at=str(row[6]),
         )
