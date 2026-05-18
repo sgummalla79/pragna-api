@@ -38,7 +38,7 @@ async def test_migration_applies_cleanly():
             "conversations", "conversation_skills", "conversation_skill_agents",
             "conversation_skill_executions", "conversation_skill_execution_stages",
             "conversation_messages", "conversation_artifacts",
-            "token_usage", "user_llm_models",
+            "user_token_usage", "user_llm_models",
             "model_pricing",
         }
 

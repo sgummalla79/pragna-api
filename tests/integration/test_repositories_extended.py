@@ -11,7 +11,7 @@ TEST_DB_URL = os.getenv("TEST_DATABASE_URL", "postgresql://pragna:pragna_dev@loc
 
 _TRUNCATE_SQL = """
     TRUNCATE TABLE
-        token_usage, conversation_artifacts, conversation_messages,
+        user_token_usage, conversation_artifacts, conversation_messages,
         conversation_skill_execution_stages, conversation_skill_executions,
         conversation_skill_agents, conversation_skills, conversations,
         user_agents_versions, user_agents, user_skills,

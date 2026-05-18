@@ -21,7 +21,7 @@ async def pool():
         async with p.connection() as conn:
             await conn.execute("""
                 TRUNCATE TABLE
-                    token_usage, conversation_artifacts, conversation_messages,
+                    user_token_usage, conversation_artifacts, conversation_messages,
                     conversation_skill_execution_stages, conversation_skill_executions,
                     conversation_skill_agents, conversation_skills, conversations,
                     user_agents_versions, user_agents, user_skills,

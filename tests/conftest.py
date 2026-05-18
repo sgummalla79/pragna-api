@@ -31,7 +31,7 @@ os.environ["AUTH0_CLIENT_SECRET"] = "test-client-secret"
 
 _TRUNCATE_SQL = """
     TRUNCATE TABLE
-        token_usage, conversation_artifacts, conversation_messages,
+        user_token_usage, conversation_artifacts, conversation_messages,
         conversation_skill_execution_stages, conversation_skill_executions,
         conversation_skill_agents, conversation_skills, conversations,
         user_agents_versions, user_agents, user_skills,
