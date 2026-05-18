@@ -15,9 +15,9 @@ env/
 
 # Environment
 .env
-.env.dev
 !.env.example
 !.env.test
+!.env.dev
 
 # Uploads
 uploads/
