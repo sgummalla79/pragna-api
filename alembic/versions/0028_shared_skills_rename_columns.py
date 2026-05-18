@@ -16,8 +16,8 @@ depends_on = None
 def upgrade() -> None:
     conn = op.get_bind()
 
-    conn.execute(sa.text("ALTER TABLE skills RENAME COLUMN skill_key TO name"))
     conn.execute(sa.text("ALTER TABLE skills RENAME COLUMN name TO display_name"))
+    conn.execute(sa.text("ALTER TABLE skills RENAME COLUMN skill_key TO name"))
     conn.execute(sa.text("""
         ALTER TABLE skills ADD COLUMN modified_at TIMESTAMPTZ NOT NULL DEFAULT now()
     """))
