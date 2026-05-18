@@ -24,10 +24,7 @@ from pathlib import Path
 
 VERSIONS_DIR = Path(__file__).parent.parent / "alembic" / "versions"
 
-V1_ONLY_TABLES = {
-    "user_agents",
-    "user_agent_versions",
-}
+V1_ONLY_TABLES: set = set()  # all v1-only tables have been dropped
 
 V2_ONLY_TABLES = {
     "user_skills_v2",

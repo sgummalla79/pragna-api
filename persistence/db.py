@@ -23,8 +23,6 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from repositories.skill_repository import SkillRepository
 from repositories.agent_repository import AgentRepository
 from repositories.user_repository import UserRepository
-from repositories.user_skill_repository import UserSkillRepository
-from repositories.user_agent_repository import UserAgentRepository
 from repositories.conversation_repository import ConversationRepository
 from repositories.execution_repository import ExecutionRepository
 from repositories.message_repository import MessageRepository
@@ -46,8 +44,6 @@ class DBContext:
     skills:        SkillRepository
     agents:        AgentRepository
     users:         UserRepository
-    user_skills:   UserSkillRepository
-    user_agents:   UserAgentRepository
     conversations: ConversationRepository
     executions:    ExecutionRepository
     messages:      MessageRepository
@@ -95,8 +91,6 @@ async def get_db():
             skills        = SkillRepository(pool),
             agents        = AgentRepository(pool),
             users         = UserRepository(pool),
-            user_skills   = UserSkillRepository(pool),
-            user_agents   = UserAgentRepository(pool),
             conversations = ConversationRepository(pool),
             executions    = ExecutionRepository(pool),
             messages      = MessageRepository(pool),

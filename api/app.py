@@ -42,7 +42,6 @@ from api.routes.health import router as health_router
 from api.routes.auth import router as auth_router
 from api.routes.providers import router as providers_router
 from api.routes.skills import router as skills_router
-from api.routes.agents import router as agents_router
 from api.routes.conversations import router as conversations_router
 from api.routes.executions import router as executions_router
 from api.routes.artifacts import router as artifacts_router
@@ -186,8 +185,7 @@ Pipeline and chat endpoints return `text/event-stream`. Each event is a JSON obj
         {"name": "Usage",             "description": "Token usage and cost tracking"},
         {"name": "Settings",          "description": "User preferences (theme, etc.)"},
         {"name": "v1 / Skills",       "description": "**API v1** — Skill discovery, install, validate, and agent config"},
-        {"name": "v1 / Agents",       "description": "**API v1** — Per-agent prompt versioning and model assignment"},
-        {"name": "v2 / Skills",       "description": "**API v2** — Skill-level versioning: drafts per user, global published versions"},
+        {"name": "v2 / Skills",       "description": "**API v2** — Skill-level versioning: drafts per user, published versions"},
     ],
     lifespan=lifespan,
     swagger_ui_parameters={"defaultModelsExpandDepth": -1},
@@ -213,7 +211,6 @@ app.include_router(auth_router)
 # ── Unversioned /api/* — backward-compatible, hidden from docs ────────────────
 _UNVERSIONED = dict(include_in_schema=False)
 app.include_router(skills_router,        prefix="/api", **_UNVERSIONED)
-app.include_router(agents_router,        prefix="/api", **_UNVERSIONED)
 app.include_router(conversations_router, prefix="/api", **_UNVERSIONED)
 app.include_router(executions_router,    prefix="/api", **_UNVERSIONED)
 app.include_router(artifacts_router,     prefix="/api", **_UNVERSIONED)
@@ -225,7 +222,6 @@ app.include_router(settings_router,      prefix="/api", **_UNVERSIONED)
 
 # ── API v1 — full versioned set, visible in docs ──────────────────────────────
 app.include_router(skills_router,        prefix="/api/v1")
-app.include_router(agents_router,        prefix="/api/v1")
 app.include_router(conversations_router, prefix="/api/v1")
 app.include_router(executions_router,    prefix="/api/v1")
 app.include_router(artifacts_router,     prefix="/api/v1")

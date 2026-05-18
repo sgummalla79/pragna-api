@@ -156,6 +156,13 @@ class UserSkillV2Repository(BaseRepository):
         agents = await self._get_agents(str(version_row[0]))
         return self._row_to_version(version_row, agents)
 
+    async def uninstall(self, user_id: str, skill_id: str) -> None:
+        """Remove user_skills_v2 row — CASCADE deletes versions and agents."""
+        await self._exec(
+            "DELETE FROM user_skills_v2 WHERE user_id = %s AND skill_id = %s",
+            (user_id, skill_id),
+        )
+
     async def discard_draft(self, user_skill_id: str) -> None:
         """Delete the current draft version and its agents (cascade handles agents)."""
         await self._exec(

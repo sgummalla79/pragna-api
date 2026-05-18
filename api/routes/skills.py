@@ -29,14 +29,20 @@ async def list_skills(request: Request, current_user: AuthUser = Depends(get_cur
     db             = request.app.state.db
     skill_registry = request.app.state.skill_registry
 
-    installed_ids = await db.user_skills.get_installed_skill_ids(current_user.sub)
-    all_skills    = await db.skills.list_all()
+    all_skills = await db.skills.list_all()
+
+    # Build set of installed skill IDs from user_skills_v2
+    installed_ids: set[str] = set()
+    for skill in all_skills:
+        us = await db.user_skill_v2.get(current_user.sub, skill.id)
+        if us:
+            installed_ids.add(skill.id)
 
     result = []
     for skill in all_skills:
         manifest = skill_registry.get(skill.skill_key).manifest if skill.skill_key in skill_registry else None
         result.append({
-            "id":          skill.skill_key,   # string key, e.g. "architect"
+            "id":          skill.skill_key,
             "skill_key":   skill.skill_key,
             "name":        skill.name,
             "description": skill.description,
@@ -205,14 +211,12 @@ async def install_skill(
     if not skill:
         raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found.")
 
-    already = await db.user_skills.is_installed(current_user.sub, skill.id)
-    if already:
+    existing = await db.user_skill_v2.get(current_user.sub, skill.id)
+    if existing:
         return {"ok": True, "skill": skill_id, "status": "already_installed"}
 
-    # Install: create user_skills row + user_agents + version 1 for each agent
-    await db.user_skills.install(current_user.sub, skill.id)
+    await db.user_skill_v2.install(current_user.sub, skill.id)
     agents = await db.agents.get_by_skill(skill.id)
-    await db.user_agents.install_skill_agents(current_user.sub, agents)
 
     log.info("Installed skill '%s' for user %s (%d agents)", skill_id, current_user.sub, len(agents))
     return {"ok": True, "skill": skill_id, "status": "installed", "agents": len(agents)}
@@ -237,7 +241,7 @@ async def uninstall_skill(
     if not skill:
         raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found.")
 
-    await db.user_skills.uninstall(current_user.sub, skill.id)
+    await db.user_skill_v2.uninstall(current_user.sub, skill.id)
     return {"ok": True, "skill": skill_id}
 
 
