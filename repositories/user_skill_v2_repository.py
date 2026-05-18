@@ -41,9 +41,9 @@ class UserSkillV2Repository(BaseRepository):
     # ── Install ───────────────────────────────────────────────────────────────
 
     async def install(self, user_id: str, skill_id: str) -> UserSkillV2:
-        """Create a user_skills_v2 row if not already installed."""
+        """Create a user_skills row if not already installed."""
         row = await self._fetchone(
-            "INSERT INTO user_skills_v2 (user_id, skill_id)"
+            "INSERT INTO user_skills (user_id, skill_id)"
             " VALUES (%s, %s)"
             " ON CONFLICT (user_id, skill_id) DO UPDATE SET user_id = EXCLUDED.user_id"
             " RETURNING id, user_id, skill_id, current_version, created_at",
@@ -54,7 +54,7 @@ class UserSkillV2Repository(BaseRepository):
     async def get(self, user_id: str, skill_id: str) -> Optional[UserSkillV2]:
         row = await self._fetchone(
             "SELECT id, user_id, skill_id, current_version, created_at"
-            " FROM user_skills_v2 WHERE user_id = %s AND skill_id = %s",
+            " FROM user_skills WHERE user_id = %s AND skill_id = %s",
             (user_id, skill_id),
         )
         return self._row_to_skill(row) if row else None
@@ -64,7 +64,7 @@ class UserSkillV2Repository(BaseRepository):
     async def list_versions(self, user_skill_id: str) -> list[UserSkillVersion]:
         rows = await self._fetchall(
             "SELECT id, user_skill_id, version_number, status, created_at"
-            " FROM user_skill_versions_v2 WHERE user_skill_id = %s"
+            " FROM user_skill_versions WHERE user_skill_id = %s"
             " ORDER BY version_number DESC",
             (user_skill_id,),
         )
@@ -77,7 +77,7 @@ class UserSkillV2Repository(BaseRepository):
     async def get_version(self, user_skill_id: str, version_number: int) -> Optional[UserSkillVersion]:
         row = await self._fetchone(
             "SELECT id, user_skill_id, version_number, status, created_at"
-            " FROM user_skill_versions_v2"
+            " FROM user_skill_versions"
             " WHERE user_skill_id = %s AND version_number = %s",
             (user_skill_id, version_number),
         )
@@ -89,7 +89,7 @@ class UserSkillV2Repository(BaseRepository):
     async def get_draft(self, user_skill_id: str) -> Optional[UserSkillVersion]:
         row = await self._fetchone(
             "SELECT id, user_skill_id, version_number, status, created_at"
-            " FROM user_skill_versions_v2"
+            " FROM user_skill_versions"
             " WHERE user_skill_id = %s AND status = 'draft'"
             " LIMIT 1",
             (user_skill_id,),
@@ -109,7 +109,7 @@ class UserSkillV2Repository(BaseRepository):
         next_version = await self._next_version_number(user_skill_id)
 
         version_row = await self._fetchone(
-            "INSERT INTO user_skill_versions_v2 (user_skill_id, version_number, status)"
+            "INSERT INTO user_skill_versions (user_skill_id, version_number, status)"
             " VALUES (%s, %s, 'draft')"
             " RETURNING id, user_skill_id, version_number, status, created_at",
             (user_skill_id, next_version),
@@ -118,7 +118,7 @@ class UserSkillV2Repository(BaseRepository):
 
         for agent in base_agents:
             await self._exec(
-                "INSERT INTO user_skill_agents_v2"
+                "INSERT INTO user_skill_agents"
                 " (user_id, user_skill_version_id, skill_agent_id, content, model_id)"
                 " VALUES (%s, %s, %s, %s, %s)",
                 (user_id, version_id, agent.skill_agent_id, agent.content, agent.model_id),
@@ -136,37 +136,37 @@ class UserSkillV2Repository(BaseRepository):
     ) -> None:
         """Update a single agent's content within a draft version."""
         await self._exec(
-            "UPDATE user_skill_agents_v2 SET content = %s, model_id = %s"
+            "UPDATE user_skill_agents SET content = %s, model_id = %s"
             " WHERE user_skill_version_id = %s AND skill_agent_id = %s",
             (content, model_id, user_skill_version_id, skill_agent_id),
         )
 
     async def publish_draft(self, user_skill_id: str, draft_version_id: str) -> UserSkillVersion:
-        """Publish draft → set status=published, update user_skills_v2.current_version."""
+        """Publish draft → set status=published, update user_skills.current_version."""
         version_row = await self._fetchone(
-            "UPDATE user_skill_versions_v2 SET status = 'published'"
+            "UPDATE user_skill_versions SET status = 'published'"
             " WHERE id = %s"
             " RETURNING id, user_skill_id, version_number, status, created_at",
             (draft_version_id,),
         )
         await self._exec(
-            "UPDATE user_skills_v2 SET current_version = %s WHERE id = %s",
+            "UPDATE user_skills SET current_version = %s WHERE id = %s",
             (version_row[2], user_skill_id),
         )
         agents = await self._get_agents(str(version_row[0]))
         return self._row_to_version(version_row, agents)
 
     async def uninstall(self, user_id: str, skill_id: str) -> None:
-        """Remove user_skills_v2 row — CASCADE deletes versions and agents."""
+        """Remove user_skills row — CASCADE deletes versions and agents."""
         await self._exec(
-            "DELETE FROM user_skills_v2 WHERE user_id = %s AND skill_id = %s",
+            "DELETE FROM user_skills WHERE user_id = %s AND skill_id = %s",
             (user_id, skill_id),
         )
 
     async def discard_draft(self, user_skill_id: str) -> None:
         """Delete the current draft version and its agents (cascade handles agents)."""
         await self._exec(
-            "DELETE FROM user_skill_versions_v2"
+            "DELETE FROM user_skill_versions"
             " WHERE user_skill_id = %s AND status = 'draft'",
             (user_skill_id,),
         )
@@ -177,7 +177,7 @@ class UserSkillV2Repository(BaseRepository):
         rows = await self._fetchall(
             "SELECT id, user_id, user_skill_version_id, skill_agent_id,"
             "       content, model_id, created_at, modified_at"
-            " FROM user_skill_agents_v2 WHERE user_skill_version_id = %s"
+            " FROM user_skill_agents WHERE user_skill_version_id = %s"
             " ORDER BY skill_agent_id",
             (user_skill_version_id,),
         )
@@ -186,7 +186,7 @@ class UserSkillV2Repository(BaseRepository):
     async def _next_version_number(self, user_skill_id: str) -> int:
         row = await self._fetchone(
             "SELECT COALESCE(MAX(version_number), 0) + 1"
-            " FROM user_skill_versions_v2 WHERE user_skill_id = %s",
+            " FROM user_skill_versions WHERE user_skill_id = %s",
             (user_skill_id,),
         )
         return int(row[0])
@@ -194,7 +194,7 @@ class UserSkillV2Repository(BaseRepository):
     async def get_latest_published_agents(self, user_skill_id: str) -> list[UserSkillAgent]:
         """Return agents from the latest published version (for copying into a new draft)."""
         row = await self._fetchone(
-            "SELECT id FROM user_skill_versions_v2"
+            "SELECT id FROM user_skill_versions"
             " WHERE user_skill_id = %s AND status = 'published'"
             " ORDER BY version_number DESC LIMIT 1",
             (user_skill_id,),
