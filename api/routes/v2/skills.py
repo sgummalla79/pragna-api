@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from utils.auth import AuthUser, get_current_user
 
 log    = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/v2/skills", tags=["v2 / Skills"])
+router = APIRouter(prefix="/skills", tags=["v2 / Skills"])
 
 
 class UpdateAgentRequest(BaseModel):

@@ -52,7 +52,7 @@ from pydantic import BaseModel
 from utils.auth import AuthUser, get_current_user
 
 log    = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/conversations")
+router = APIRouter(prefix="/conversations")
 
 
 def _sse(event_type: str, payload: dict) -> str:

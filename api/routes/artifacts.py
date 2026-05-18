@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.get(
-    "/api/artifacts/{artifact_id}",
+    "/artifacts/{artifact_id}",
     tags=["Artifacts"],
     summary="Get artifact content by ID",
     responses={
@@ -49,7 +49,7 @@ async def get_artifact(
 
 
 @router.get(
-    "/api/executions/{execution_id}/artifacts",
+    "/executions/{execution_id}/artifacts",
     tags=["Artifacts"],
     summary="List all artifacts for an execution",
     responses={200: {"description": "Artifact summaries for the execution"}},

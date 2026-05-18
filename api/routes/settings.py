@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from utils.auth import AuthUser, get_current_user
 
-router = APIRouter(prefix="/api/settings")
+router = APIRouter(prefix="/settings")
 
 
 @router.get(

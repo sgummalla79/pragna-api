@@ -8,7 +8,7 @@ GET /api/usage/summary             — aggregate usage for the current user
 from fastapi import APIRouter, Depends, HTTPException, Request
 from utils.auth import AuthUser, get_current_user
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="")
 
 
 @router.get(

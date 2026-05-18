@@ -7,7 +7,7 @@ GET /api/models/active  — all active models across all active providers
 from fastapi import APIRouter, Depends, Request
 from utils.auth import AuthUser, get_current_user
 
-router = APIRouter(prefix="/api/models")
+router = APIRouter(prefix="/models")
 
 
 @router.get(

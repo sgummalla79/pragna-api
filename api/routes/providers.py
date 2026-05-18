@@ -28,7 +28,7 @@ from utils.auth import AuthUser, get_current_user
 from utils.key_encryption import encrypt
 
 log    = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/providers")
+router = APIRouter(prefix="/providers")
 
 
 class ConnectRequest(BaseModel):

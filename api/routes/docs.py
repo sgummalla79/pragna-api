@@ -32,32 +32,34 @@ _SWAGGER_CSS = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"
 
 
 def _path_version(path: str) -> int:
-    """Return the version number a path belongs to. Unversioned paths are v1."""
+    """Return the explicit version number of a path, or 0 for unversioned/infrastructure."""
     m = re.search(r"^/api/v(\d+)/", path)
-    return int(m.group(1)) if m else 1
+    return int(m.group(1)) if m else 0
 
 
 def _available_versions(schema: dict) -> list[int]:
-    """Detect all API versions present in the schema."""
-    versions = {1}
+    """Detect all explicitly versioned API versions present in the schema."""
+    versions = set()
     for path in schema.get("paths", {}):
-        versions.add(_path_version(path))
-    return sorted(versions)
+        v = _path_version(path)
+        if v > 0:
+            versions.add(v)
+    return sorted(versions) or [1]
 
 
 def _schema_for_version(schema: dict, version: int) -> dict:
-    """Return a cumulative schema containing all routes up to and including `version`."""
+    """Return schema containing only paths for the given version + infrastructure (auth/health)."""
+    def include(path: str) -> bool:
+        v = _path_version(path)
+        if v == 0:
+            # Infrastructure (auth, health, docs) — always include
+            return not path.startswith("/api/")
+        return v == version
+
     return {
         **schema,
-        "info": {
-            **schema.get("info", {}),
-            "title": f"Pragna API — v{version}",
-        },
-        "paths": {
-            path: ops
-            for path, ops in schema.get("paths", {}).items()
-            if _path_version(path) <= version
-        },
+        "info": {**schema.get("info", {}), "title": f"Pragna API — v{version}"},
+        "paths": {path: ops for path, ops in schema.get("paths", {}).items() if include(path)},
     }
 
 

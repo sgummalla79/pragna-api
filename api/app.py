@@ -205,30 +205,43 @@ app.add_middleware(
 app.add_middleware(RequestLoggerMiddleware)
 
 app.include_router(docs_router)
+
+# ── Infrastructure (unversioned — auth, health, root redirect) ────────────────
 app.include_router(health_router)
 app.include_router(auth_router)
-app.include_router(providers_router)
-app.include_router(skills_router)
-app.include_router(agents_router)
-app.include_router(conversations_router)
-app.include_router(executions_router)
-app.include_router(artifacts_router)
-app.include_router(usage_router)
-app.include_router(uploads_router)
-app.include_router(settings_router)
-app.include_router(models_router)
 
-# ── v1 alias — /api/v1/* mirrors /api/* (hidden from docs to avoid duplication) ──
-app.include_router(skills_router,        prefix="/v1", include_in_schema=False)
-app.include_router(agents_router,        prefix="/v1", include_in_schema=False)
-app.include_router(providers_router,     prefix="/v1", include_in_schema=False)
-app.include_router(conversations_router, prefix="/v1", include_in_schema=False)
-app.include_router(executions_router,    prefix="/v1", include_in_schema=False)
-app.include_router(artifacts_router,     prefix="/v1", include_in_schema=False)
-app.include_router(usage_router,         prefix="/v1", include_in_schema=False)
-app.include_router(uploads_router,       prefix="/v1", include_in_schema=False)
-app.include_router(settings_router,      prefix="/v1", include_in_schema=False)
-app.include_router(models_router,        prefix="/v1", include_in_schema=False)
+# ── Unversioned /api/* — backward-compatible, hidden from docs ────────────────
+_UNVERSIONED = dict(include_in_schema=False)
+app.include_router(skills_router,        prefix="/api", **_UNVERSIONED)
+app.include_router(agents_router,        prefix="/api", **_UNVERSIONED)
+app.include_router(conversations_router, prefix="/api", **_UNVERSIONED)
+app.include_router(executions_router,    prefix="/api", **_UNVERSIONED)
+app.include_router(artifacts_router,     prefix="/api", **_UNVERSIONED)
+app.include_router(providers_router,     prefix="/api", **_UNVERSIONED)
+app.include_router(models_router,        prefix="/api", **_UNVERSIONED)
+app.include_router(uploads_router,       prefix="/api", **_UNVERSIONED)
+app.include_router(usage_router,         prefix="/api", **_UNVERSIONED)
+app.include_router(settings_router,      prefix="/api", **_UNVERSIONED)
 
-# ── v2 — skill-level versioning ───────────────────────────────────────────────
-app.include_router(v2_skills_router)
+# ── API v1 — full versioned set, visible in docs ──────────────────────────────
+app.include_router(skills_router,        prefix="/api/v1")
+app.include_router(agents_router,        prefix="/api/v1")
+app.include_router(conversations_router, prefix="/api/v1")
+app.include_router(executions_router,    prefix="/api/v1")
+app.include_router(artifacts_router,     prefix="/api/v1")
+app.include_router(providers_router,     prefix="/api/v1")
+app.include_router(models_router,        prefix="/api/v1")
+app.include_router(uploads_router,       prefix="/api/v1")
+app.include_router(usage_router,         prefix="/api/v1")
+app.include_router(settings_router,      prefix="/api/v1")
+
+# ── API v2 — v1 routes inherited + v2/skills replaces v1/skills+agents ───────
+app.include_router(v2_skills_router,     prefix="/api/v2")   # new skill-level versioning
+app.include_router(conversations_router, prefix="/api/v2")
+app.include_router(executions_router,    prefix="/api/v2")
+app.include_router(artifacts_router,     prefix="/api/v2")
+app.include_router(providers_router,     prefix="/api/v2")
+app.include_router(models_router,        prefix="/api/v2")
+app.include_router(uploads_router,       prefix="/api/v2")
+app.include_router(usage_router,         prefix="/api/v2")
+app.include_router(settings_router,      prefix="/api/v2")

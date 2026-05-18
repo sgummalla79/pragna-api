@@ -23,7 +23,7 @@ IMAGE_EXTENSIONS    = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 DOCUMENT_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md"}
 ALL_ACCEPTED        = DOCUMENT_EXTENSIONS | IMAGE_EXTENSIONS
 
-router = APIRouter(prefix="/api/uploads")
+router = APIRouter(prefix="/uploads")
 
 
 @router.post(

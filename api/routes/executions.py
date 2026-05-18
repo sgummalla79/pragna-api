@@ -407,7 +407,7 @@ async def _stream_graph(
 # ── Invoke skill pipeline ─────────────────────────────────────────────────────
 
 @router.post(
-    "/api/conversations/{conversation_id}/skills/{conversation_skill_id}/invoke",
+    "/conversations/{conversation_id}/skills/{conversation_skill_id}/invoke",
     tags=["Executions"],
     summary="Start skill pipeline (SSE stream)",
     description="Streams SSE events: stage_start, token, stage_end, document_ready, review_complete, approval_complete, confirm_understanding, question, done, error, provider_error",
@@ -533,7 +533,7 @@ async def invoke_skill(
 # ── Resume interrupt ──────────────────────────────────────────────────────────
 
 @router.post(
-    "/api/executions/{execution_id}/reply",
+    "/executions/{execution_id}/reply",
     tags=["Executions"],
     summary="Resume pipeline after interrupt (SSE stream)",
     description="Resume after confirm_understanding or question interrupt. Streams same events as invoke.",
@@ -622,7 +622,7 @@ async def reply(
 # ── Retry ─────────────────────────────────────────────────────────────────────
 
 @router.post(
-    "/api/executions/{execution_id}/retry",
+    "/executions/{execution_id}/retry",
     tags=["Executions"],
     summary="Retry from last checkpoint (SSE stream)",
     description="Re-streams from the last LangGraph checkpoint with the current model config.",
@@ -682,7 +682,7 @@ async def retry(
 # ── Audit trail ───────────────────────────────────────────────────────────────
 
 @router.get(
-    "/api/executions/{execution_id}/stages",
+    "/executions/{execution_id}/stages",
     tags=["Executions"],
     summary="Audit trail — stages run in an execution",
     responses={

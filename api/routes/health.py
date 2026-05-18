@@ -20,7 +20,7 @@ def _read_version() -> str:
 
 
 @router.get(
-    "/api/about",
+    "/about",
     tags=["Health"],
     summary="App version and upload limits",
     responses={200: {"description": "Version string and upload configuration"}},
