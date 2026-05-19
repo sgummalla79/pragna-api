@@ -164,11 +164,14 @@ Records which skills a user has installed.
 | skill_id | UUID | NO | | **FK** → `skills(id)` ON DELETE CASCADE |
 | current_version | INTEGER | NO | `0` | `0` = no published version yet |
 | created_at | TIMESTAMPTZ | NO | `now()` | Installation timestamp |
+| modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on any UPDATE |
 
 **Unique:** `(user_id, skill_id)`
 
 **Indexes:**
 - `idx_user_skills_user_id` on `(user_id)`
+
+**Trigger:** `trg_user_skills_modified_at` — updates `modified_at` on every UPDATE.
 
 ---
 

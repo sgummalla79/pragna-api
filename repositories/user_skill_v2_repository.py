@@ -12,6 +12,7 @@ class UserSkillV2:
     skill_id:        str
     current_version: int
     created_at:      str
+    modified_at:     str
 
 
 @dataclass
@@ -46,14 +47,14 @@ class UserSkillV2Repository(BaseRepository):
             "INSERT INTO user_skills (user_id, skill_id)"
             " VALUES (%s, %s)"
             " ON CONFLICT (user_id, skill_id) DO UPDATE SET user_id = EXCLUDED.user_id"
-            " RETURNING id, user_id, skill_id, current_version, created_at",
+            " RETURNING id, user_id, skill_id, current_version, created_at, modified_at",
             (user_id, skill_id),
         )
         return self._row_to_skill(row)
 
     async def get(self, user_id: str, skill_id: str) -> Optional[UserSkillV2]:
         row = await self._fetchone(
-            "SELECT id, user_id, skill_id, current_version, created_at"
+            "SELECT id, user_id, skill_id, current_version, created_at, modified_at"
             " FROM user_skills WHERE user_id = %s AND skill_id = %s",
             (user_id, skill_id),
         )
@@ -209,6 +210,7 @@ class UserSkillV2Repository(BaseRepository):
         return UserSkillV2(
             id=str(row[0]), user_id=row[1], skill_id=str(row[2]),
             current_version=int(row[3]), created_at=str(row[4]),
+            modified_at=str(row[5]),
         )
 
     @staticmethod
