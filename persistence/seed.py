@@ -32,8 +32,6 @@ async def seed_skills(db: DBContext, skill_registry: SkillRegistry) -> None:
             name         = m.id,
             display_name = m.name,
             description  = m.description,
-            icon         = m.icon,
-            version      = m.version,
         )
         log.info("Seeded skill '%s' (id=%s)", skill.name, skill.id)
 

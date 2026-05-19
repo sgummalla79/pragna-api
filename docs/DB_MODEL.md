@@ -125,8 +125,6 @@ Out-of-the-box skill definitions (e.g. `architect`). Seeded from disk at startup
 | name | TEXT | NO | | UNIQUE — machine identifier, e.g. `architect` |
 | display_name | TEXT | NO | | Human-readable name |
 | description | TEXT | YES | | |
-| icon | TEXT | YES | `'⚡'` | |
-| version | INTEGER | YES | `1` | OOB version from disk |
 | created_at | TIMESTAMPTZ | YES | `now()` | |
 | modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on any UPDATE |
 

@@ -46,8 +46,6 @@ async def list_skills(request: Request, current_user: AuthUser = Depends(get_cur
             "name":         skill.name,
             "display_name": skill.display_name,
             "description":  skill.description,
-            "icon":         skill.icon,
-            "version":      skill.version,
             "installed":    skill.id in installed_ids,
             "pipeline":     manifest.pipeline if manifest else [],
         })
