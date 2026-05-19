@@ -94,13 +94,11 @@ class UserRepository(BaseRepository):
         return str(row[0]) if row else None
 
     async def save_config(self, user_id: str, key: str, value: str) -> None:
-        now = datetime.now(timezone.utc).isoformat()
         await self._exec(
-            "INSERT INTO user_config (user_id, key, value, updated_at)"
-            " VALUES (%s, %s, %s, %s)"
-            " ON CONFLICT (user_id, key) DO UPDATE SET"
-            "   value = EXCLUDED.value, updated_at = EXCLUDED.updated_at",
-            (user_id, key, value, now),
+            "INSERT INTO user_config (user_id, key, value)"
+            " VALUES (%s, %s, %s)"
+            " ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value",
+            (user_id, key, value),
         )
 
     async def get_config(self, user_id: str, key: str) -> Optional[str]:

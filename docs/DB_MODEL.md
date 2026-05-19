@@ -11,6 +11,7 @@
 8. [user_skills](#user_skills)
 9. [user_skill_versions](#user_skill_versions)
 10. [user_skill_agent_versions](#user_skill_agent_versions)
+11. [user_config](#user_config)
 
 ---
 
@@ -220,6 +221,25 @@ Stores a user's customised agent content within a specific skill version. On eac
 - `idx_user_skill_agent_versions_version_id` on `(user_skill_version_id)`
 
 **Trigger:** `trg_user_skill_agents_v2_modified_at` — updates `modified_at` when `content` changes.
+
+---
+
+## user_config
+
+Stores per-user key/value preferences (e.g. theme settings).
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | UUID | NO | `gen_random_uuid()` | **PK** |
+| user_id | TEXT | NO | | **FK** → `users(id)` ON DELETE CASCADE |
+| key | TEXT | NO | | Config key, e.g. `theme` |
+| value | TEXT | NO | | Config value |
+| created_at | TIMESTAMPTZ | NO | `now()` | |
+| modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on any UPDATE |
+
+**Unique:** `(user_id, key)`
+
+**Trigger:** `trg_user_config_modified_at` — updates `modified_at` on every UPDATE.
 
 ---
 
