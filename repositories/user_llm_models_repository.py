@@ -34,6 +34,18 @@ class UserLLMModelsRepository(BaseRepository):
         )
         return self._row(row)
 
+    async def get_by_id_resolved(self, user_llm_model_id: str) -> Optional[tuple[str, str]]:
+        """Resolve user_llm_models.id → (provider_name, model_name) strings."""
+        row = await self._fetchone(
+            "SELECT lp.name, lm.name"
+            " FROM user_llm_models ulm"
+            " JOIN llm_models lm ON lm.id = ulm.llm_model_id"
+            " JOIN llm_providers lp ON lp.id = lm.llm_provider_id"
+            " WHERE ulm.id = %s",
+            (user_llm_model_id,),
+        )
+        return (row[0], row[1]) if row else None
+
     async def get_by_id(self, model_id: str) -> Optional[UserLLMModel]:
         row = await self._fetchone(
             "SELECT id, user_id, llm_model_id, display_name, is_active, created_at, modified_at"

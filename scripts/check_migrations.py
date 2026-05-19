@@ -27,9 +27,9 @@ VERSIONS_DIR = Path(__file__).parent.parent / "alembic" / "versions"
 V1_ONLY_TABLES: set = set()  # all v1-only tables have been dropped
 
 V2_ONLY_TABLES = {
-    "user_skills",
-    "user_skill_versions",
-    "user_skill_agents",
+    "skill_snapshots",
+    "skill_snapshot_agents",
+    "skill_executions",
 }
 
 VALID_PREFIX_RE = re.compile(r"^\d{4}_(v1|v2|shared)_")

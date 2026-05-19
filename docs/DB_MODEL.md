@@ -9,9 +9,9 @@
 6. [user_llm_models](#user_llm_models)
 7. [skills](#skills)
 8. [skill_agents](#skill_agents)
-9. [user_skills](#user_skills)
-10. [user_skill_versions](#user_skill_versions)
-11. [user_skill_agent_versions](#user_skill_agent_versions)
+9. [skill_snapshots](#skill_snapshots)
+10. [skill_snapshot_agents](#skill_snapshot_agents)
+11. [skill_executions](#skill_executions)
 
 ---
 
@@ -171,73 +171,78 @@ Out-of-the-box agent definitions for each skill. Seeded from disk at startup.
 
 ---
 
-## user_skills
+## skill_snapshots
 
-Records which skills a user has installed.
+A user's point-in-time copy of a skill's agent prompts. Replaces `user_skills`, `user_skill_versions`, `conversation_skills`, and `conversation_skill_agents`.
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | UUID | NO | `gen_random_uuid()` | **PK** |
 | user_id | TEXT | NO | | **FK** → `users(id)` ON DELETE CASCADE |
 | skill_id | UUID | NO | | **FK** → `skills(id)` ON DELETE CASCADE |
-| current_version | INTEGER | NO | `0` | `0` = no published version yet |
-| created_at | TIMESTAMPTZ | NO | `now()` | Installation timestamp |
-| modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on any UPDATE |
-
-**Unique:** `(user_id, skill_id)`
-
-**Indexes:**
-- `idx_user_skills_user_id` on `(user_id)`
-
-**Trigger:** `trg_user_skills_modified_at` — updates `modified_at` on every UPDATE.
-
----
-
-## user_skill_versions
-
-Version history for a user's installed skill. Each edit cycle creates a new draft version; publishing makes it permanent.
-
-| Column | Type | Nullable | Default | Notes |
-|---|---|---|---|---|
-| id | UUID | NO | `gen_random_uuid()` | **PK** |
-| user_skill_id | UUID | NO | | **FK** → `user_skills(id)` ON DELETE CASCADE |
-| version_number | INTEGER | NO | `1` | Auto-incremented per user_skill |
-| status | VARCHAR | NO | `'draft'` | `'draft'` or `'published'` |
+| version_number | INT | NO | `1` | Auto-incremented across all types per user+skill |
+| type | VARCHAR | NO | | `'draft'` \| `'published'` \| `'execution'` |
+| conversation_id | UUID | YES | | **FK** → `conversations(id)` ON DELETE SET NULL — set only for execution snapshots |
 | created_at | TIMESTAMPTZ | NO | `now()` | |
 | modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on any UPDATE |
 
-**Unique:** `(user_skill_id, version_number)`
+**Unique:** `(user_id, skill_id, version_number)`
 
-**Check:** `status IN ('draft', 'published')`
+**Check:** `type IN ('draft','published','execution')`
 
 **Indexes:**
-- `idx_user_skill_versions_user_skill_id` on `(user_skill_id)`
-- `idx_user_skill_versions_status` on `(user_skill_id, status)`
+- `idx_skill_snapshots_user_skill` on `(user_id, skill_id)`
+- `idx_skill_snapshots_type` on `(user_id, skill_id, type)`
+- `idx_skill_snapshots_published` on `(user_id, skill_id, type, version_number DESC)`
+- `idx_skill_snapshots_conversation` on `(conversation_id)`
 
-**Trigger:** `trg_user_skill_versions_modified_at` — updates `modified_at` on every UPDATE.
+**Trigger:** `trg_skill_snapshots_modified_at` — updates `modified_at` on every UPDATE.
+
+**Business rules:**
+- `type='draft'` — at most 1 per (user_id, skill_id); deleted when user discards or publishes
+- `type='published'` — accumulates; current = MAX(version_number) WHERE type='published'
+- `type='execution'` — exactly 1 per (conversation_id, skill_id); **never deleted**
 
 ---
 
-## user_skill_agent_versions
+## skill_snapshot_agents
 
-Stores a user's customised agent content within a specific skill version. On each edit, a full snapshot of all agents is created in a new draft version.
+Agent content per snapshot. Content is frozen at snapshot time for execution snapshots; only `model_id` can be updated after creation.
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | UUID | NO | `gen_random_uuid()` | **PK** |
-| user_skill_version_id | UUID | NO | | **FK** → `user_skill_versions(id)` ON DELETE CASCADE |
+| snapshot_id | UUID | NO | | **FK** → `skill_snapshots(id)` ON DELETE CASCADE |
 | skill_agent_id | UUID | NO | | **FK** → `skill_agents(id)` ON DELETE CASCADE |
-| content | TEXT | NO | | User's customised system prompt |
-| model_id | UUID | YES | | **FK** → `user_llm_models(id)` ON DELETE SET NULL |
+| content | TEXT | NO | | Frozen system prompt at snapshot time |
+| model_id | UUID | YES | | **FK** → `user_llm_models(id)` ON DELETE SET NULL — updatable for provider fallback |
 | created_at | TIMESTAMPTZ | NO | `now()` | |
 | modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on content change |
 
-**Unique:** `(user_skill_version_id, skill_agent_id)`
+**Unique:** `(snapshot_id, skill_agent_id)`
 
 **Indexes:**
-- `idx_user_skill_agent_versions_version_id` on `(user_skill_version_id)`
+- `idx_skill_snapshot_agents` on `(snapshot_id)`
 
-**Trigger:** `trg_user_skill_agents_v2_modified_at` — updates `modified_at` when `content` changes.
+**Trigger:** `trg_skill_snapshot_agents_modified_at` — updates `modified_at` when `content` changes.
+
+---
+
+## skill_executions
+
+Execution run lifecycle. The `id` doubles as the LangGraph `thread_id`.
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | UUID | NO | | **PK** — also the LangGraph thread_id |
+| snapshot_id | UUID | NO | | **FK** → `skill_snapshots(id)` ON DELETE CASCADE — must be an execution snapshot |
+| status | TEXT | NO | | `'running'` \| `'complete'` \| `'halted'` \| `'error'` \| `'invalid_input'` |
+| started_at | TIMESTAMPTZ | NO | `now()` | |
+| completed_at | TIMESTAMPTZ | YES | | Set when status transitions out of 'running' |
+
+**Indexes:**
+- `idx_skill_executions_snapshot` on `(snapshot_id)`
+- `idx_skill_executions_status` on `(snapshot_id, status)`
 
 ---
 
@@ -250,12 +255,17 @@ llm_providers
 users
   ├── user_config
   ├── user_llm_providers ──→ llm_providers
-  ├── user_llm_models ──────→ llm_models
-  └── user_skills ──────────→ skills
-        └── user_skill_versions
-              └── user_skill_agent_versions ──→ skill_agents
-                                             ──→ user_llm_models
+  └── user_llm_models ──────→ llm_models
 
 skills
   └── skill_agents
+
+conversations ──→ users
+
+skill_snapshots ──→ users
+                ──→ skills
+                ──→ conversations (execution type only)
+  └── skill_snapshot_agents ──→ skill_agents
+                             ──→ user_llm_models
+        └── skill_executions
 ```

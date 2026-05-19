@@ -24,13 +24,13 @@ from repositories.skill_repository import SkillRepository
 from repositories.agent_repository import AgentRepository
 from repositories.user_repository import UserRepository
 from repositories.conversation_repository import ConversationRepository
-from repositories.execution_repository import ExecutionRepository
+from repositories.skill_snapshot_repository import SkillSnapshotRepository
+from repositories.skill_execution_repository import SkillExecutionRepository
 from repositories.message_repository import MessageRepository
 from repositories.artifact_repository import ArtifactRepository
 from repositories.usage_repository import UsageRepository
 from repositories.user_llm_models_repository import UserLLMModelsRepository
 from repositories.model_pricing_repository import ModelPricingRepository
-from repositories.user_skill_v2_repository import UserSkillV2Repository
 from repositories.llm_provider_repository import LLMProviderRepository
 from repositories.llm_model_repository import LLMModelRepository
 
@@ -43,17 +43,17 @@ class DBContext:
     pool:         AsyncConnectionPool
 
     # Repositories — each owns exactly one domain
-    skills:        SkillRepository
-    agents:        AgentRepository
-    users:         UserRepository
-    conversations: ConversationRepository
-    executions:    ExecutionRepository
-    messages:      MessageRepository
-    artifacts:     ArtifactRepository
-    usage:         UsageRepository
-    llm_models:    UserLLMModelsRepository
+    skills:          SkillRepository
+    agents:          AgentRepository
+    users:           UserRepository
+    conversations:   ConversationRepository
+    skill_snapshots: SkillSnapshotRepository
+    skill_executions: SkillExecutionRepository
+    messages:        MessageRepository
+    artifacts:       ArtifactRepository
+    usage:           UsageRepository
+    llm_models:      UserLLMModelsRepository
     model_pricing:   ModelPricingRepository
-    user_skill_v2:   UserSkillV2Repository
     llm_providers:   LLMProviderRepository
     llm_catalog:     LLMModelRepository
 
@@ -90,21 +90,21 @@ async def get_db():
 
         # ── Repositories ──────────────────────────────────────────────────────
         db = DBContext(
-            checkpointer  = checkpointer,
-            pool          = pool,
-            skills        = SkillRepository(pool),
-            agents        = AgentRepository(pool),
-            users         = UserRepository(pool),
-            conversations = ConversationRepository(pool),
-            executions    = ExecutionRepository(pool),
-            messages      = MessageRepository(pool),
-            artifacts     = ArtifactRepository(pool),
-            usage         = UsageRepository(pool),
-            llm_models    = UserLLMModelsRepository(pool),
-            model_pricing = ModelPricingRepository(pool),
-            user_skill_v2 = UserSkillV2Repository(pool),
-            llm_providers = LLMProviderRepository(pool),
-            llm_catalog   = LLMModelRepository(pool),
+            checkpointer     = checkpointer,
+            pool             = pool,
+            skills           = SkillRepository(pool),
+            agents           = AgentRepository(pool),
+            users            = UserRepository(pool),
+            conversations    = ConversationRepository(pool),
+            skill_snapshots  = SkillSnapshotRepository(pool),
+            skill_executions = SkillExecutionRepository(pool),
+            messages         = MessageRepository(pool),
+            artifacts        = ArtifactRepository(pool),
+            usage            = UsageRepository(pool),
+            llm_models       = UserLLMModelsRepository(pool),
+            model_pricing    = ModelPricingRepository(pool),
+            llm_providers    = LLMProviderRepository(pool),
+            llm_catalog      = LLMModelRepository(pool),
         )
 
         log.info("DBContext ready — all repositories initialised")

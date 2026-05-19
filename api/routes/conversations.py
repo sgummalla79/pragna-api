@@ -82,7 +82,7 @@ class RenameRequest(BaseModel):
 
 
 class UpdateModelConfigRequest(BaseModel):
-    agents: list[dict]   # [{agent_id, provider, model}]
+    agents: list[dict]   # [{skill_agent_id, model_id}]
 
 
 # ── Conversation CRUD ─────────────────────────────────────────────────────────
@@ -162,8 +162,8 @@ async def get_conversation(
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
     messages       = await db.messages.list_for_conversation(conversation_id, visible_only=False)
-    skills         = await db.conversations.get_skills_for_conversation(conversation_id)
-    latest_exec    = await db.executions.get_latest_for_conversation(conversation_id)
+    skills         = await db.skill_snapshots.list_for_conversation(conversation_id)
+    latest_exec    = await db.skill_executions.get_latest_for_conversation(conversation_id)
 
     return {
         "id":            conv.id,
@@ -187,7 +187,7 @@ async def get_conversation(
             for m in messages
         ],
         "skills": [
-            {"id": s.id, "skill_id": s.skill_id, "added_at": s.added_at}
+            {"id": s.id, "skill_id": s.skill_id, "added_at": s.created_at}
             for s in skills
         ],
     }
@@ -302,7 +302,7 @@ async def send_message(
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
     # Check no skill is currently running
-    running = await db.executions.get_running(conversation_id)
+    running = await db.skill_executions.get_running(conversation_id)
     if running:
         raise HTTPException(status_code=409, detail="A skill is currently running — wait for it to complete.")
 
@@ -415,7 +415,7 @@ async def add_skill(
     request:         Request,
     current_user:    AuthUser = Depends(get_current_user),
 ):
-    """Add a skill to a conversation and create a frozen snapshot."""
+    """Add a skill to a conversation and create a frozen execution snapshot."""
     db   = request.app.state.db
     conv = await db.conversations.get_by_id(conversation_id)
     if not conv or conv.user_id != current_user.sub:
@@ -425,34 +425,41 @@ async def add_skill(
     if not skill:
         raise HTTPException(status_code=404, detail=f"Skill '{body.skill_id}' not found.")
 
-    user_skill = await db.user_skill_v2.get(current_user.sub, skill.id)
-    if not user_skill:
+    if not await db.skill_snapshots.is_installed(current_user.sub, skill.id):
         raise HTTPException(status_code=400, detail=f"Skill '{body.skill_id}' is not installed.")
 
-    # Build snapshot from latest published version (falls back to OOB content if no published version)
-    published_agents = await db.user_skill_v2.get_latest_published_agents(user_skill.id)
-    if published_agents:
-        agents_data = [
-            {
-                "agent_id": a.skill_agent_id,
-                "content":  a.content,
-                "model":    a.model_id,
-            }
-            for a in published_agents
-        ]
+    existing = await db.skill_snapshots.get_execution_snapshot(conversation_id, skill.id)
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Skill '{body.skill_id}' already added to this conversation.")
+
+    published = await db.skill_snapshots.get_current_published(current_user.sub, skill.id)
+    if published:
+        base_agents = published.agents
     else:
-        oob_agents = await db.agents.get_by_skill(skill.id)
-        agents_data = [
-            {"agent_id": a.id, "content": a.content, "model": None}
-            for a in oob_agents
+        from repositories.skill_snapshot_repository import SkillSnapshotAgent
+        oob = await db.agents.get_by_skill(skill.id)
+        base_agents = [
+            SkillSnapshotAgent(
+                id="", snapshot_id="",
+                skill_agent_id=a.id,
+                content=a.content,
+                model_id=None,
+                created_at="", modified_at="",
+            )
+            for a in oob
         ]
 
-    conv_skill = await db.conversations.add_skill(conversation_id, skill.id, agents_data)
+    snapshot = await db.skill_snapshots.create_execution_snapshot(
+        user_id         = current_user.sub,
+        skill_id        = skill.id,
+        conversation_id = conversation_id,
+        base_agents     = base_agents,
+    )
     return {
-        "ok":               True,
-        "conversation_skill_id": conv_skill.id,
-        "skill_id":         body.skill_id,
-        "agents_count":     len(agents_data),
+        "ok":                    True,
+        "conversation_skill_id": snapshot.id,
+        "skill_id":              body.skill_id,
+        "agents_count":          len(snapshot.agents),
     }
 
 
@@ -475,8 +482,7 @@ async def remove_skill(
     conv = await db.conversations.get_by_id(conversation_id)
     if not conv or conv.user_id != current_user.sub:
         raise HTTPException(status_code=404, detail="Conversation not found.")
-
-    await db.conversations.remove_skill(conversation_skill_id)
+    # Execution snapshots are preserved as audit records — no deletion.
     return {"ok": True}
 
 
@@ -501,18 +507,20 @@ async def get_skill_config(
     if not conv or conv.user_id != current_user.sub:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
-    agents = await db.conversations.get_skill_agents(conversation_skill_id)
+    snapshot = await db.skill_snapshots.get_by_id(conversation_skill_id)
+    if not snapshot or snapshot.conversation_id != conversation_id:
+        raise HTTPException(status_code=404, detail="Skill snapshot not found.")
+
     return {
         "conversation_skill_id": conversation_skill_id,
         "agents": [
             {
-                "id":        a.id,
-                "agent_id":  a.agent_id,
-                "version":   a.version,
-                "provider":  a.provider,
-                "model":     a.model,
+                "id":             a.id,
+                "skill_agent_id": a.skill_agent_id,
+                "model_id":       a.model_id,
+                "modified_at":    a.modified_at,
             }
-            for a in agents
+            for a in snapshot.agents
         ],
     }
 
@@ -533,15 +541,17 @@ async def update_skill_config(
     request:               Request,
     current_user:          AuthUser = Depends(get_current_user),
 ):
-    """Update provider/model on conversation_skill_agents rows (models only, content frozen)."""
+    """Update model_id on skill_snapshot_agents rows (model only, content frozen)."""
     db   = request.app.state.db
     conv = await db.conversations.get_by_id(conversation_id)
     if not conv or conv.user_id != current_user.sub:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
     for item in body.agents:
-        await db.conversations.update_agent_model(
-            item["id"], item.get("provider"), item.get("model")
+        await db.skill_snapshots.update_agent_model(
+            snapshot_id    = conversation_skill_id,
+            skill_agent_id = item["skill_agent_id"],
+            model_id       = item.get("model_id"),
         )
 
     return {"ok": True, "updated": len(body.agents)}

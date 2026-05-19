@@ -4,12 +4,12 @@ Execution routes — skill pipeline invocation and control.
 POST /api/conversations/{id}/skills/{sid}/invoke  — start pipeline (SSE)
 POST /api/executions/{execution_id}/reply         — resume interrupt (SSE)
 POST /api/executions/{execution_id}/retry         — retry after model update (SSE)
-GET  /api/executions/{execution_id}/stages        — per-stage audit trail
 """
 
 import asyncio
 import json
 import logging
+import uuid
 from typing import AsyncGenerator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -23,19 +23,12 @@ from framework.defaults import available_providers, smart_pick
 
 
 def _pick_title_model(agent_cfg: dict | None) -> tuple[str, str]:
-    """
-    Pick provider/model for auto-titling.
-    Prefers the lightest model from the execution's agent config;
-    falls back to smart_pick("default") from the current request's connected providers.
-    """
     from utils.user_context import _user_keys
-    # Use whatever model the first agent is already configured with
     if agent_cfg:
         p = agent_cfg.get("provider")
         m = agent_cfg.get("model")
         if p and m:
             return p, m
-    # Nothing configured — smart-pick from connected providers
     from utils.user_context import get_active_models
     connected = available_providers(_user_keys.get() or {})
     try:
@@ -74,8 +67,8 @@ def _get(obj, key, default=None):
 
 class InvokeRequest(BaseModel):
     brief:               Optional[str] = ""
-    original_message:    Optional[str] = ""   # raw user text (with /skill tokens) — saved to DB
-    source_type:         Optional[str] = "brief"   # brief | document | image
+    original_message:    Optional[str] = ""
+    source_type:         Optional[str] = "brief"
     uploaded_file_path:  Optional[str] = ""
     uploaded_image_path: Optional[str] = ""
     raw_document_text:   Optional[str] = ""
@@ -88,8 +81,6 @@ class ReplyRequest(BaseModel):
 # ── User-friendly error formatter ────────────────────────────────────────────
 
 def _friendly_error(msg: str) -> str:
-    """Convert raw exception messages to plain-English user-facing text.
-    Raw messages go to logs; only this output is shown to or saved for the user."""
     low = msg.lower()
     if "api key" in low or "authentication" in low or "unauthorized" in low or "invalid_api_key" in low:
         return "Invalid or missing API key. Please check your credentials in Settings → Providers."
@@ -104,7 +95,7 @@ def _friendly_error(msg: str) -> str:
     if "could not be parsed" in low or "parsing_error" in low:
         return "The model's response was not in the expected format. Please try again."
     if "no models are activated" in low or "go to settings" in low or "activate at least one model" in low:
-        return msg  # already user-friendly guidance from our own ValueError
+        return msg
     return "Something went wrong while processing your request. Please try again."
 
 
@@ -113,15 +104,11 @@ def _friendly_error(msg: str) -> str:
 async def _stream_graph(
     graph,
     input_,
-    config:       dict,
+    config:          dict,
     db,
-    execution_id: str,
+    execution_id:    str,
     conversation_id: str,
 ) -> AsyncGenerator[str, None]:
-    """
-    Run the LangGraph pipeline and emit SSE events.
-    Persists artifacts after research, records token usage, updates execution status.
-    """
     from utils.user_context import _user_keys, get_anthropic_mode, get_active_models, register_execution_keys, unregister_execution_keys
 
     live_keys = _user_keys.get()
@@ -130,10 +117,9 @@ async def _stream_graph(
 
     config = {**config, "recursion_limit": 100}
 
-    # Accumulate streamed text per stage so we can persist it to the DB
     _stage_buffer: dict[str, str] = {}
     _current_stage: list[str]     = [None]
-    _latest_artifact_id: list     = [None]   # tracks most recent artifact for approval linkage
+    _latest_artifact_id: list     = [None]
 
     async def _save_msg(role: str, content: str, message_type: str = "chat") -> None:
         if not db or not content.strip():
@@ -187,7 +173,6 @@ async def _stream_graph(
                 if name == "research":
                     doc_version = _get(output, "document_version", 0)
                     doc_draft   = _get(output, "document_draft", "")
-                    # Persist artifact
                     if doc_draft and db:
                         try:
                             artifact = await db.artifacts.create(
@@ -200,14 +185,14 @@ async def _stream_graph(
                             _latest_artifact_id[0] = artifact.id
                             await _save_msg("assistant", f"Document v{doc_version} submitted for review.", "chat")
                             yield _sse("document_ready", {
-                                "version":     doc_version,
-                                "artifact_id": artifact.id,
+                                "version":      doc_version,
+                                "artifact_id":  artifact.id,
                                 "execution_id": execution_id,
                             })
                         except Exception as exc:
                             log.error("Failed to persist artifact: %s", exc)
                             yield _sse("document_ready", {
-                                "version":     doc_version,
+                                "version":      doc_version,
                                 "execution_id": execution_id,
                             })
 
@@ -234,7 +219,6 @@ async def _stream_graph(
                     if changes:
                         content += "\n\n**Required changes:**\n" + "\n".join(f"- {c}" for c in changes)
                     await _save_msg("assistant", content, "chat")
-                    # Save artifact_ref so the approved document is linkable on restore
                     if status == "approved" and _latest_artifact_id[0] and db:
                         try:
                             await db.messages.create(
@@ -257,7 +241,6 @@ async def _stream_graph(
                     })
 
                 else:
-                    # Save accumulated streamed text for this stage (intake, discovery)
                     buffered = _stage_buffer.pop(name, "")
                     await _save_msg("assistant", buffered, "chat")
                     yield _sse("stage_end", {"stage": name})
@@ -282,15 +265,8 @@ async def _stream_graph(
                         input_tokens    = rec.get("input_tokens", 0),
                         output_tokens   = rec.get("output_tokens", 0),
                     )
-                    await db.executions.record_stage(
-                        execution_id = execution_id,
-                        agent_key    = agent_key,
-                        provider     = provider,
-                        model        = model,
-                        status       = "completed",
-                    )
                 except Exception as exc:
-                    log.warning("Failed to save usage/stage record: %s | rec=%s", exc, rec)
+                    log.warning("Failed to save usage record: %s | rec=%s", exc, rec)
 
         if state.next:
             interrupt_value = None
@@ -325,11 +301,10 @@ async def _stream_graph(
 
             if db:
                 try:
-                    await db.executions.complete(execution_id, final_status)
+                    await db.skill_executions.complete(execution_id, final_status)
                 except Exception:
                     pass
 
-                # Update latest artifact status
                 try:
                     latest = await db.artifacts.get_latest(execution_id)
                     if latest:
@@ -379,24 +354,7 @@ async def _stream_graph(
 
         if db:
             try:
-                await db.executions.complete(execution_id, "error")
-            except Exception:
-                pass
-            # Best-effort: record any stages that completed before the error
-            try:
-                state      = await graph.aget_state({"configurable": {"thread_id": execution_id}})
-                sv         = state.values or {}
-                s_cfg      = sv.get("session_agent_config", {})
-                for rec in sv.get("usage_records", []):
-                    ak  = rec.get("agent", "")
-                    cfg = s_cfg.get(ak, {})
-                    await db.executions.record_stage(
-                        execution_id = execution_id,
-                        agent_key    = ak,
-                        provider     = cfg.get("provider") or "unknown",
-                        model        = rec.get("model") or cfg.get("model") or "unknown",
-                        status       = "completed",
-                    )
+                await db.skill_executions.complete(execution_id, "error")
             except Exception:
                 pass
     finally:
@@ -430,48 +388,47 @@ async def invoke_skill(
     if not conv or conv.user_id != current_user.sub:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
-    conv_skill = await db.conversations.get_skill(conversation_skill_id)
-    if not conv_skill or conv_skill.conversation_id != conversation_id:
+    snapshot = await db.skill_snapshots.get_by_id(conversation_skill_id)
+    if not snapshot or snapshot.type != "execution" or snapshot.conversation_id != conversation_id:
         raise HTTPException(status_code=404, detail="Skill snapshot not found.")
 
-    # Guard: only one skill running at a time per conversation
-    running = await db.executions.get_running(conversation_id)
+    running = await db.skill_executions.get_running(conversation_id)
     if running:
         raise HTTPException(status_code=409, detail="A skill is already running in this conversation.")
 
-    # Load snapshot agents
-    csa_list = await db.conversations.get_skill_agents(conversation_skill_id)
-    if not csa_list:
+    if not snapshot.agents:
         raise HTTPException(status_code=400, detail="Skill snapshot has no agents.")
 
-    skill = await db.skills.get_by_id(conv_skill.skill_id)
+    skill = await db.skills.get_by_id(snapshot.skill_id)
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found.")
 
-    # Build flow_config and session_agent_config (source: conversation_skill_agents)
-    # Slot is included so get_llm_for_agent can smart_pick if provider/model are null
     registry_entry = request.app.state.skill_registry.get(skill.name)
     agent_slot_map = registry_entry.manifest.agent_slot_map if registry_entry else {}
 
     flow_config:          dict = {}
     session_agent_config: dict = {}
-    for csa in csa_list:
-        agent = await db.agents.get_by_id(csa.agent_id)
+    for ssa in snapshot.agents:
+        agent = await db.agents.get_by_id(ssa.skill_agent_id)
         if agent:
-            flow_config[agent.agent_key] = csa.content
-            session_agent_config[agent.agent_key] = {
-                "provider": csa.provider,
-                "model":    csa.model,
-                "slot":     agent_slot_map.get(agent.agent_key, "default"),
+            agent_key        = agent.name
+            provider, model  = None, None
+            if ssa.model_id:
+                resolved = await db.llm_models.get_by_id_resolved(ssa.model_id)
+                if resolved:
+                    provider, model = resolved
+            flow_config[agent_key] = ssa.content
+            session_agent_config[agent_key] = {
+                "provider": provider,
+                "model":    model,
+                "slot":     agent_slot_map.get(agent_key, "default"),
             }
 
-    # Create execution
-    execution    = await db.executions.create(conversation_skill_id)
-    execution_id = execution.id
+    execution_id = str(uuid.uuid4())
+    await db.skill_executions.create(execution_id, snapshot.id)
 
     config = {"configurable": {"thread_id": execution_id}}
 
-    # Save user message — original text (with /skill tokens) if provided, else the brief
     user_content = body.original_message or body.brief
     if user_content:
         await db.messages.create(
@@ -485,17 +442,15 @@ async def invoke_skill(
 
     await db.conversations.touch(conversation_id)
 
-    # Load user's active models and store in context so smart_pick uses them
     from utils.user_context import set_active_models
     raw_models    = await db.llm_models.get_active(current_user.sub)
-    active_models = [{"provider": m.provider_key, "model_id": m.model_id} for m in raw_models]
+    active_models = [{"provider": m.llm_model_id, "model_id": m.llm_model_id} for m in raw_models]
     set_active_models(active_models)
 
-    # Auto-title on first invocation (brief becomes the title source)
     if not conv.title and (body.brief or body.raw_document_text):
         from utils.user_context import _user_keys, get_anthropic_mode
         from api.routes.conversations import _auto_title
-        title_text  = body.brief or body.raw_document_text or ""
+        title_text              = body.brief or body.raw_document_text or ""
         first_agent             = next(iter(session_agent_config.values()), {}) if session_agent_config else {}
         t_provider, t_model     = _pick_title_model(first_agent)
         asyncio.create_task(_auto_title(
@@ -523,9 +478,9 @@ async def invoke_skill(
         _stream_graph(graph, initial_state, config, db, execution_id, conversation_id),
         media_type="text/event-stream",
         headers={
-            "Cache-Control":    "no-cache",
+            "Cache-Control":     "no-cache",
             "X-Accel-Buffering": "no",
-            "X-Execution-Id":   execution_id,
+            "X-Execution-Id":    execution_id,
         },
     )
 
@@ -550,22 +505,21 @@ async def reply(
     current_user: AuthUser = Depends(get_current_user),
 ):
     db        = request.app.state.db
-    execution = await db.executions.get_by_id(execution_id)
+    execution = await db.skill_executions.get_by_id(execution_id)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found.")
 
-    conv_skill = await db.conversations.get_skill(execution.conversation_skill_id)
-    conv       = await db.conversations.get_by_id(conv_skill.conversation_id) if conv_skill else None
+    snapshot = await db.skill_snapshots.get_by_id(execution.snapshot_id)
+    conv     = await db.conversations.get_by_id(snapshot.conversation_id) if snapshot else None
     if not conv or conv.user_id != current_user.sub:
         raise HTTPException(status_code=403, detail="Not authorised.")
 
-    skill = await db.skills.get_by_id(conv_skill.skill_id)
+    skill = await db.skills.get_by_id(snapshot.skill_id) if snapshot else None
     graph = request.app.state.graphs.get(skill.name, request.app.state.graph) if skill else request.app.state.graph
 
     config = {"configurable": {"thread_id": execution_id}}
     await db.conversations.touch(conv.id)
 
-    # Persist the user's reply
     answers = body.answers
     if isinstance(answers, list):
         user_content = "\n\n".join(str(a) for a in answers if a)
@@ -581,8 +535,6 @@ async def reply(
             message_state   = "visible",
         )
 
-    # Auto-title when the user is replying to a confirm_understanding interrupt
-    # (i.e. they typed their project description after sending /skill with no brief).
     if not conv.title:
         state = await graph.aget_state(config)
         interrupt_value = None
@@ -609,7 +561,7 @@ async def reply(
 
     from utils.user_context import set_active_models
     raw_models    = await db.llm_models.get_active(current_user.sub)
-    active_models = [{"provider": m.provider_key, "model_id": m.model_id} for m in raw_models]
+    active_models = [{"provider": m.llm_model_id, "model_id": m.llm_model_id} for m in raw_models]
     set_active_models(active_models)
 
     return StreamingResponse(
@@ -638,38 +590,41 @@ async def retry(
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    """Re-stream from the last checkpoint. Reads updated model config from snapshot."""
     db        = request.app.state.db
-    execution = await db.executions.get_by_id(execution_id)
+    execution = await db.skill_executions.get_by_id(execution_id)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found.")
 
-    conv_skill = await db.conversations.get_skill(execution.conversation_skill_id)
-    conv       = await db.conversations.get_by_id(conv_skill.conversation_id) if conv_skill else None
+    snapshot = await db.skill_snapshots.get_by_id(execution.snapshot_id)
+    conv     = await db.conversations.get_by_id(snapshot.conversation_id) if snapshot else None
     if not conv or conv.user_id != current_user.sub:
         raise HTTPException(status_code=403, detail="Not authorised.")
 
-    # Re-read snapshot (user may have updated model config)
-    csa_list      = await db.conversations.get_skill_agents(execution.conversation_skill_id)
     fresh_cfg: dict = {}
-    for csa in csa_list:
-        agent = await db.agents.get_by_id(csa.agent_id)
-        if agent:
-            fresh_cfg[agent.agent_key] = {"provider": csa.provider, "model": csa.model}
+    if snapshot:
+        for ssa in snapshot.agents:
+            agent = await db.agents.get_by_id(ssa.skill_agent_id)
+            if agent:
+                agent_key       = agent.name
+                provider, model = None, None
+                if ssa.model_id:
+                    resolved = await db.llm_models.get_by_id_resolved(ssa.model_id)
+                    if resolved:
+                        provider, model = resolved
+                fresh_cfg[agent_key] = {"provider": provider, "model": model}
 
-    skill = await db.skills.get_by_id(conv_skill.skill_id)
+    skill = await db.skills.get_by_id(snapshot.skill_id) if snapshot else None
     graph = request.app.state.graphs.get(skill.name, request.app.state.graph) if skill else request.app.state.graph
 
-    # Patch the checkpoint with the fresh model config
     config = {"configurable": {"thread_id": execution_id}}
     await graph.aupdate_state(config, {"session_agent_config": fresh_cfg})
 
-    await db.executions.complete(execution_id, "running")   # reset status for retry
+    await db.skill_executions.reset_running(execution_id)
     await db.conversations.touch(conv.id)
 
     from utils.user_context import set_active_models
     raw_models    = await db.llm_models.get_active(current_user.sub)
-    active_models = [{"provider": m.provider_key, "model_id": m.model_id} for m in raw_models]
+    active_models = [{"provider": m.llm_model_id, "model_id": m.llm_model_id} for m in raw_models]
     set_active_models(active_models)
 
     return StreamingResponse(
@@ -677,38 +632,3 @@ async def retry(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-# ── Audit trail ───────────────────────────────────────────────────────────────
-
-@router.get(
-    "/executions/{execution_id}/stages",
-    tags=["Executions"],
-    summary="Audit trail — stages run in an execution",
-    responses={
-        200: {"description": "List of stage records with agent, provider, model, and status"},
-        403: {"description": "Forbidden — execution belongs to another user"},
-        404: {"description": "Execution not found"},
-    },
-)
-async def get_stages(
-    execution_id: str,
-    request:      Request,
-    current_user: AuthUser = Depends(get_current_user),
-):
-    db     = request.app.state.db
-    stages = await db.executions.get_stages(execution_id)
-    return {
-        "execution_id": execution_id,
-        "stages": [
-            {
-                "id":        s.id,
-                "agent_key": s.agent_key,
-                "provider":  s.provider,
-                "model":     s.model,
-                "status":    s.status,
-                "ran_at":    s.ran_at,
-            }
-            for s in stages
-        ],
-    }
