@@ -1,35 +1,17 @@
 # Database Model
 
 ## Table of Contents
-1. [users](#users)
-2. [llm_providers](#llm_providers)
-3. [llm_models](#llm_models)
-4. [user_llm_providers](#user_llm_providers)
-5. [user_llm_models](#user_llm_models)
-6. [skills](#skills)
-7. [skill_agents](#skill_agents)
-8. [user_skills](#user_skills)
-9. [user_skill_versions](#user_skill_versions)
-10. [user_skill_agent_versions](#user_skill_agent_versions)
-11. [user_config](#user_config)
-
----
-
-## users
-
-Stores authenticated users (populated via Auth0 OAuth callback).
-
-| Column | Type | Nullable | Default | Notes |
-|---|---|---|---|---|
-| id | TEXT | NO | | **PK** — Auth0 `sub` (e.g. `auth0\|abc123`) |
-| email | TEXT | NO | | UNIQUE |
-| name | TEXT | YES | | Display name from Auth0 |
-| picture | TEXT | YES | | Avatar URL |
-| created_at | TIMESTAMPTZ | YES | `now()` | |
-| last_login | TIMESTAMPTZ | YES | | Updated on each login |
-| modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on any UPDATE |
-
-**Trigger:** `trg_users_modified_at` — updates `modified_at` on every UPDATE.
+1. [llm_providers](#llm_providers)
+2. [llm_models](#llm_models)
+3. [users](#users)
+4. [user_config](#user_config)
+5. [user_llm_providers](#user_llm_providers)
+6. [user_llm_models](#user_llm_models)
+7. [skills](#skills)
+8. [skill_agents](#skill_agents)
+9. [user_skills](#user_skills)
+10. [user_skill_versions](#user_skill_versions)
+11. [user_skill_agent_versions](#user_skill_agent_versions)
 
 ---
 
@@ -66,6 +48,43 @@ Global catalog of LLM models with pricing. Each model belongs to one provider.
 - `idx_llm_models_provider_id` on `(llm_provider_id)`
 
 **Trigger:** `trg_llm_models_modified_at` — updates `modified_at` on every UPDATE.
+
+---
+
+## users
+
+Stores authenticated users (populated via Auth0 OAuth callback).
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | TEXT | NO | | **PK** — Auth0 `sub` (e.g. `auth0\|abc123`) |
+| email | TEXT | NO | | UNIQUE |
+| name | TEXT | YES | | Display name from Auth0 |
+| picture | TEXT | YES | | Avatar URL |
+| created_at | TIMESTAMPTZ | YES | `now()` | |
+| last_login | TIMESTAMPTZ | YES | | Updated on each login |
+| modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on any UPDATE |
+
+**Trigger:** `trg_users_modified_at` — updates `modified_at` on every UPDATE.
+
+---
+
+## user_config
+
+Stores per-user key/value preferences (e.g. theme settings).
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | UUID | NO | `gen_random_uuid()` | **PK** |
+| user_id | TEXT | NO | | **FK** → `users(id)` ON DELETE CASCADE |
+| key | TEXT | NO | | Config key, e.g. `theme` |
+| value | TEXT | NO | | Config value |
+| created_at | TIMESTAMPTZ | NO | `now()` | |
+| modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on any UPDATE |
+
+**Unique:** `(user_id, key)`
+
+**Trigger:** `trg_user_config_modified_at` — updates `modified_at` on every UPDATE.
 
 ---
 
@@ -222,31 +241,16 @@ Stores a user's customised agent content within a specific skill version. On eac
 
 ---
 
-## user_config
-
-Stores per-user key/value preferences (e.g. theme settings).
-
-| Column | Type | Nullable | Default | Notes |
-|---|---|---|---|---|
-| id | UUID | NO | `gen_random_uuid()` | **PK** |
-| user_id | TEXT | NO | | **FK** → `users(id)` ON DELETE CASCADE |
-| key | TEXT | NO | | Config key, e.g. `theme` |
-| value | TEXT | NO | | Config value |
-| created_at | TIMESTAMPTZ | NO | `now()` | |
-| modified_at | TIMESTAMPTZ | NO | `now()` | Auto-updated by trigger on any UPDATE |
-
-**Unique:** `(user_id, key)`
-
-**Trigger:** `trg_user_config_modified_at` — updates `modified_at` on every UPDATE.
-
----
-
 ## Entity Relationships
 
 ```
+llm_providers
+  └── llm_models
+
 users
+  ├── user_config
   ├── user_llm_providers ──→ llm_providers
-  ├── user_llm_models ──────→ llm_models ──→ llm_providers
+  ├── user_llm_models ──────→ llm_models
   └── user_skills ──────────→ skills
         └── user_skill_versions
               └── user_skill_agent_versions ──→ skill_agents
@@ -254,7 +258,4 @@ users
 
 skills
   └── skill_agents
-
-llm_providers
-  └── llm_models
 ```
