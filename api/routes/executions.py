@@ -304,6 +304,8 @@ async def _stream_graph(
                     await db.skill_executions.complete(execution_id, final_status)
                 except Exception:
                     pass
+                # Note: db.skill_executions is the repo; services.executions.complete
+                # would also work but repo call is fine in _stream_graph which has db access.
 
                 try:
                     latest = await db.artifacts.get_latest(execution_id)
@@ -383,18 +385,15 @@ async def invoke_skill(
     request:               Request,
     current_user:          AuthUser = Depends(get_current_user),
 ):
-    db   = request.app.state.db
-    conv = await db.conversations.get_by_id(conversation_id)
+    db       = request.app.state.db
+    services = request.app.state.services
+    conv     = await db.conversations.get_by_id(conversation_id)
     if not conv or conv.user_id != current_user.sub:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
     snapshot = await db.skill_snapshots.get_by_id(conversation_skill_id)
     if not snapshot or snapshot.type != "execution" or snapshot.conversation_id != conversation_id:
         raise HTTPException(status_code=404, detail="Skill snapshot not found.")
-
-    running = await db.skill_executions.get_running(conversation_id)
-    if running:
-        raise HTTPException(status_code=409, detail="A skill is already running in this conversation.")
 
     if not snapshot.agents:
         raise HTTPException(status_code=400, detail="Skill snapshot has no agents.")
@@ -406,45 +405,41 @@ async def invoke_skill(
     registry_entry = request.app.state.skill_registry.get(skill.name)
     agent_slot_map = registry_entry.manifest.agent_slot_map if registry_entry else {}
 
-    flow_config:          dict = {}
-    session_agent_config: dict = {}
+    try:
+        execution_id, _, session_agent_config = await services.executions.start(
+            conversation_id = conversation_id,
+            snapshot_id     = conversation_skill_id,
+            agent_slot_map  = agent_slot_map,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    # Build flow_config (agent_key → prompt content) from the snapshot agents
+    flow_config: dict = {}
     for ssa in snapshot.agents:
         agent = await db.agents.get_by_id(ssa.skill_agent_id)
         if agent:
-            agent_key        = agent.name
-            provider, model  = None, None
-            if ssa.model_id:
-                resolved = await db.llm_models.get_by_id_resolved(ssa.model_id)
-                if resolved:
-                    provider, model = resolved
-            flow_config[agent_key] = ssa.content
-            session_agent_config[agent_key] = {
-                "provider": provider,
-                "model":    model,
-                "slot":     agent_slot_map.get(agent_key, "default"),
-            }
-
-    execution_id = str(uuid.uuid4())
-    await db.skill_executions.create(execution_id, snapshot.id)
+            flow_config[agent.name] = ssa.content
 
     config = {"configurable": {"thread_id": execution_id}}
 
     user_content = body.original_message or body.brief
     if user_content:
+        from repositories.constants import MessageRole, MessageType, MessageState
         await db.messages.create(
             conversation_id = conversation_id,
             execution_id    = execution_id,
-            role            = "user",
+            role            = MessageRole.USER,
             content         = user_content,
-            message_type    = "chat",
-            message_state   = "visible",
+            message_type    = MessageType.CHAT,
+            message_state   = MessageState.VISIBLE,
         )
 
     await db.conversations.touch(conversation_id)
 
     from utils.user_context import set_active_models
-    raw_models    = await db.llm_models.get_active(current_user.sub)
-    active_models = [{"provider": m.llm_model_id, "model_id": m.llm_model_id} for m in raw_models]
+    active_models_raw = await db.user_llm_models.get_active(current_user.sub)
+    active_models = [{"provider": m.provider_key, "model_id": m.model_name} for m in active_models_raw]
     set_active_models(active_models)
 
     if not conv.title and (body.brief or body.raw_document_text):
@@ -505,7 +500,8 @@ async def reply(
     current_user: AuthUser = Depends(get_current_user),
 ):
     db        = request.app.state.db
-    execution = await db.skill_executions.get_by_id(execution_id)
+    services  = request.app.state.services
+    execution = await services.executions.get_by_id(execution_id)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found.")
 
@@ -526,13 +522,14 @@ async def reply(
     else:
         user_content = str(answers or "")
     if user_content.strip():
+        from repositories.constants import MessageRole, MessageType, MessageState
         await db.messages.create(
             conversation_id = conv.id,
             execution_id    = execution_id,
-            role            = "user",
+            role            = MessageRole.USER,
             content         = user_content.strip(),
-            message_type    = "chat",
-            message_state   = "visible",
+            message_type    = MessageType.CHAT,
+            message_state   = MessageState.VISIBLE,
         )
 
     if not conv.title:
@@ -560,8 +557,8 @@ async def reply(
                     ))
 
     from utils.user_context import set_active_models
-    raw_models    = await db.llm_models.get_active(current_user.sub)
-    active_models = [{"provider": m.llm_model_id, "model_id": m.llm_model_id} for m in raw_models]
+    active_models_raw = await db.user_llm_models.get_active(current_user.sub)
+    active_models = [{"provider": m.provider_key, "model_id": m.model_name} for m in active_models_raw]
     set_active_models(active_models)
 
     return StreamingResponse(
@@ -590,8 +587,10 @@ async def retry(
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    db        = request.app.state.db
-    execution = await db.skill_executions.get_by_id(execution_id)
+    db       = request.app.state.db
+    services = request.app.state.services
+
+    execution = await services.executions.get_by_id(execution_id)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found.")
 
@@ -600,31 +599,21 @@ async def retry(
     if not conv or conv.user_id != current_user.sub:
         raise HTTPException(status_code=403, detail="Not authorised.")
 
-    fresh_cfg: dict = {}
-    if snapshot:
-        for ssa in snapshot.agents:
-            agent = await db.agents.get_by_id(ssa.skill_agent_id)
-            if agent:
-                agent_key       = agent.name
-                provider, model = None, None
-                if ssa.model_id:
-                    resolved = await db.llm_models.get_by_id_resolved(ssa.model_id)
-                    if resolved:
-                        provider, model = resolved
-                fresh_cfg[agent_key] = {"provider": provider, "model": model}
-
     skill = await db.skills.get_by_id(snapshot.skill_id) if snapshot else None
     graph = request.app.state.graphs.get(skill.name, request.app.state.graph) if skill else request.app.state.graph
 
-    config = {"configurable": {"thread_id": execution_id}}
+    registry_entry = request.app.state.skill_registry.get(skill.name) if skill else None
+    agent_slot_map = registry_entry.manifest.agent_slot_map if registry_entry else {}
+
+    config    = {"configurable": {"thread_id": execution_id}}
+    fresh_cfg = await services.executions.reset_for_retry(execution_id, agent_slot_map)
     await graph.aupdate_state(config, {"session_agent_config": fresh_cfg})
 
-    await db.skill_executions.reset_running(execution_id)
     await db.conversations.touch(conv.id)
 
     from utils.user_context import set_active_models
-    raw_models    = await db.llm_models.get_active(current_user.sub)
-    active_models = [{"provider": m.llm_model_id, "model_id": m.llm_model_id} for m in raw_models]
+    active_models_raw = await db.user_llm_models.get_active(current_user.sub)
+    active_models = [{"provider": m.provider_key, "model_id": m.model_name} for m in active_models_raw]
     set_active_models(active_models)
 
     return StreamingResponse(

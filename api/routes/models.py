@@ -22,20 +22,19 @@ async def active_models(
     current_user: AuthUser = Depends(get_current_user),
 ):
     """
-    Return all models the user has marked active, grouped by provider.
-    Only includes models whose provider is also active (isactive=TRUE in user_llm_providers).
+    Return all models the user has marked active, filtered to only include
+    models whose provider is also active (has a stored API key and is_active=True).
     """
-    db            = request.app.state.db
-    key_statuses  = await db.users.get_llm_provider_key_statuses(current_user.sub)
-    active_models = await db.llm_models.get_active(current_user.sub)
+    services      = request.app.state.services
+    key_statuses  = await services.providers.get_key_statuses(current_user.sub)
+    active        = await services.llm_models.get_active(current_user.sub)
 
     def provider_is_active(provider_key: str) -> bool:
-        if provider_key == "bedrock":
-            return key_statuses.get("anthropic_bedrock_url", False)
+        """Return True if the provider has a connected and active key."""
         return key_statuses.get(provider_key, False)
 
     result = []
-    for m in active_models:
+    for m in active:
         if not provider_is_active(m.provider_key):
             continue
         entry = get_provider(m.provider_key)

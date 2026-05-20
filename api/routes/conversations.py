@@ -41,7 +41,7 @@ async def _auto_title(db, conversation_id: str, text: str, provider: str, model:
         from utils.user_context import set_user_context
         set_user_context(user_keys, anthropic_mode)
         title = await _generate_title(text, provider, model)
-        await db.conversations.rename(conversation_id, title)
+        await db.conversations.update_title(conversation_id, title)
     except Exception as exc:
         log.debug("Auto-title failed for %s: %s", conversation_id, exc)
 
@@ -161,9 +161,10 @@ async def get_conversation(
     if not conv or conv.user_id != current_user.sub:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
-    messages       = await db.messages.list_for_conversation(conversation_id, visible_only=False)
-    skills         = await db.skill_snapshots.list_for_conversation(conversation_id)
-    latest_exec    = await db.skill_executions.get_latest_for_conversation(conversation_id)
+    messages    = await db.messages.list_for_conversation(conversation_id, visible_only=False)
+    services    = request.app.state.services
+    skills      = await services.conversations.list_skills_for_conversation(conversation_id)
+    latest_exec = await db.skill_executions.get_latest_for_conversation(conversation_id)
 
     return {
         "id":            conv.id,
@@ -212,7 +213,7 @@ async def rename_conversation(
     conv = await db.conversations.get_by_id(conversation_id)
     if not conv or conv.user_id != current_user.sub:
         raise HTTPException(status_code=404, detail="Conversation not found.")
-    await db.conversations.rename(conversation_id, body.title)
+    await db.conversations.update_title(conversation_id, body.title)
     return {"ok": True}
 
 
@@ -234,7 +235,7 @@ async def delete_conversation(
     conv = await db.conversations.get_by_id(conversation_id)
     if not conv or conv.user_id != current_user.sub:
         raise HTTPException(status_code=404, detail="Conversation not found.")
-    await db.conversations.archive(conversation_id)
+    await db.conversations.update_archived(conversation_id, True)
     return {"ok": True}
 
 
@@ -312,8 +313,8 @@ async def send_message(
         from framework.defaults import smart_pick, available_providers
         from utils.user_context import _user_keys
         connected = available_providers(_user_keys.get() or {})
-        raw_models = await db.llm_models.get_active(current_user.sub)
-        active_models = [{"provider": m.provider_key, "model_id": m.model_id} for m in raw_models]
+        raw_models    = await request.app.state.services.llm_models.get_active(current_user.sub)
+        active_models = [{"provider": m.provider_key, "model_id": m.model_name} for m in raw_models]
         try:
             pick     = smart_pick("default", connected, active_models)
             provider = provider or pick["provider"]
@@ -416,51 +417,35 @@ async def add_skill(
     current_user:    AuthUser = Depends(get_current_user),
 ):
     """Add a skill to a conversation and create a frozen execution snapshot."""
-    db   = request.app.state.db
+    db       = request.app.state.db
+    services = request.app.state.services
     conv = await db.conversations.get_by_id(conversation_id)
     if not conv or conv.user_id != current_user.sub:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
-    skill = await db.skills.get_by_key(body.skill_id)
-    if not skill:
-        raise HTTPException(status_code=404, detail=f"Skill '{body.skill_id}' not found.")
+    try:
+        snapshot = await services.conversations.add_skill(
+            user_id         = current_user.sub,
+            conversation_id = conversation_id,
+            skill_name      = body.skill_id,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg)
+        if "not installed" in msg:
+            raise HTTPException(status_code=400, detail=msg)
+        if "already added" in msg:
+            raise HTTPException(status_code=409, detail=msg)
+        raise HTTPException(status_code=422, detail=msg)
 
-    if not await db.skill_snapshots.is_installed(current_user.sub, skill.id):
-        raise HTTPException(status_code=400, detail=f"Skill '{body.skill_id}' is not installed.")
-
-    existing = await db.skill_snapshots.get_execution_snapshot(conversation_id, skill.id)
-    if existing:
-        raise HTTPException(status_code=409, detail=f"Skill '{body.skill_id}' already added to this conversation.")
-
-    published = await db.skill_snapshots.get_current_published(current_user.sub, skill.id)
-    if published:
-        base_agents = published.agents
-    else:
-        from repositories.skill_snapshot_repository import SkillSnapshotAgent
-        oob = await db.agents.get_by_skill(skill.id)
-        base_agents = [
-            SkillSnapshotAgent(
-                id="", snapshot_id="",
-                skill_agent_id=a.id,
-                content=a.content,
-                model_id=None,
-                created_at="", modified_at="",
-            )
-            for a in oob
-        ]
-
-    snapshot = await db.skill_snapshots.create_execution_snapshot(
-        user_id         = current_user.sub,
-        skill_id        = skill.id,
-        conversation_id = conversation_id,
-        base_agents     = base_agents,
-    )
     return {
         "ok":                    True,
         "conversation_skill_id": snapshot.id,
         "skill_id":              body.skill_id,
         "agents_count":          len(snapshot.agents),
     }
+
 
 
 @router.delete(
@@ -569,7 +554,8 @@ async def pin_conversation(
     conv = await db.conversations.get_by_id(conversation_id)
     if not conv or conv.user_id != current_user.sub:
         raise HTTPException(status_code=404, detail="Conversation not found.")
-    await db.conversations.pin(conversation_id)
+    now = db.conversations._now()
+    await db.conversations.update_pinned(conversation_id, True, now)
     return {"ok": True}
 
 
@@ -583,5 +569,5 @@ async def unpin_conversation(
     conv = await db.conversations.get_by_id(conversation_id)
     if not conv or conv.user_id != current_user.sub:
         raise HTTPException(status_code=404, detail="Conversation not found.")
-    await db.conversations.unpin(conversation_id)
+    await db.conversations.update_pinned(conversation_id, False, None)
     return {"ok": True}

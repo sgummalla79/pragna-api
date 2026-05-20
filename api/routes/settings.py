@@ -8,6 +8,7 @@ POST /api/settings/theme   — save theme preference
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
+from repositories.constants import ConfigKey
 from utils.auth import AuthUser, get_current_user
 
 router = APIRouter(prefix="/settings")
@@ -19,9 +20,13 @@ router = APIRouter(prefix="/settings")
     summary="Get current theme preference",
     responses={200: {"description": "Current theme name"}},
 )
-async def get_theme(request: Request, current_user: AuthUser = Depends(get_current_user)):
+async def get_theme(
+    request:      Request,
+    current_user: AuthUser = Depends(get_current_user),
+):
+    """Return the user's saved theme preference, or 'default' if not set."""
     db    = request.app.state.db
-    theme = await db.users.get_config(current_user.sub, "theme")
+    theme = await db.user_config.get(current_user.sub, ConfigKey.THEME)
     return {"theme": theme or "default"}
 
 
@@ -40,6 +45,7 @@ async def save_theme(
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
+    """Persist the user's theme preference in user_config."""
     db = request.app.state.db
-    await db.users.save_config(current_user.sub, "theme", body.theme)
+    await db.user_config.upsert(current_user.sub, ConfigKey.THEME, body.theme)
     return {"ok": True, "theme": body.theme}

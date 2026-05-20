@@ -27,16 +27,15 @@ router = APIRouter(prefix="/skills")
 )
 async def list_skills(request: Request, current_user: AuthUser = Depends(get_current_user)):
     db             = request.app.state.db
+    services       = request.app.state.services
     skill_registry = request.app.state.skill_registry
+    all_skills     = await db.skills.list_all()
 
-    all_skills = await db.skills.list_all()
-
-    # Build set of installed skill IDs from user_skills_v2
-    installed_ids: set[str] = set()
+    # Build set of installed skill names
+    installed_names: set[str] = set()
     for skill in all_skills:
-        us = await db.user_skill_v2.get(current_user.sub, skill.id)
-        if us:
-            installed_ids.add(skill.id)
+        if await services.skills.is_installed(current_user.sub, skill.name):
+            installed_names.add(skill.name)
 
     result = []
     for skill in all_skills:
@@ -46,7 +45,7 @@ async def list_skills(request: Request, current_user: AuthUser = Depends(get_cur
             "name":         skill.name,
             "display_name": skill.display_name,
             "description":  skill.description,
-            "installed":    skill.id in installed_ids,
+            "installed":    skill.name in installed_names,
             "pipeline":     manifest.pipeline if manifest else [],
         })
 
@@ -85,8 +84,8 @@ async def classify_skill_choice(
 
     db        = request.app.state.db
     connected = connected_providers()
-    raw_models = await db.llm_models.get_active(current_user.sub)
-    active_models = [{"provider": m.provider_key, "model_id": m.model_id} for m in raw_models]
+    raw_models = await request.app.state.services.llm_models.get_active(current_user.sub)
+    active_models = [{"provider": m.provider_key, "model_id": m.model_name} for m in raw_models]
     try:
         pick = smart_pick("default", connected, active_models)
         llm  = build_llm(pick["provider"], pick["model"])
@@ -138,8 +137,9 @@ async def validate_brief(
     Validate that the user's brief is relevant and sufficient for the skill.
     Returns {valid, reason, message}. Falls back to valid=True if no LLM is available.
     """
-    db    = request.app.state.db
-    skill = await db.skills.get_by_key(skill_id)
+    db       = request.app.state.db
+    services = request.app.state.services
+    skill    = await db.skills.get_by_name(skill_id)
     if not skill:
         raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found.")
 
@@ -148,9 +148,9 @@ async def validate_brief(
     from utils.llm_factory import build_llm
     from langchain_core.messages import SystemMessage, HumanMessage
 
-    connected = connected_providers()
-    raw_models = await db.llm_models.get_active(current_user.sub)
-    active_models = [{"provider": m.provider_key, "model_id": m.model_id} for m in raw_models]
+    connected  = connected_providers()
+    raw_models = await services.llm_models.get_active(current_user.sub)
+    active_models = [{"provider": m.provider_key, "model_id": m.model_name} for m in raw_models]
     try:
         pick = smart_pick("default", connected, active_models)
         llm  = build_llm(pick["provider"], pick["model"])
@@ -204,20 +204,18 @@ async def install_skill(
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    db   = request.app.state.db
-    skill = await db.skills.get_by_key(skill_id)
+    db       = request.app.state.db
+    services = request.app.state.services
+    skill    = await db.skills.get_by_name(skill_id)
     if not skill:
         raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found.")
 
-    existing = await db.user_skill_v2.get(current_user.sub, skill.id)
-    if existing:
+    if await services.skills.is_installed(current_user.sub, skill_id):
         return {"ok": True, "skill": skill_id, "status": "already_installed"}
 
-    await db.user_skill_v2.install(current_user.sub, skill.id)
-    agents = await db.agents.get_by_skill(skill.id)
-
-    log.info("Installed skill '%s' for user %s (%d agents)", skill_id, current_user.sub, len(agents))
-    return {"ok": True, "skill": skill_id, "status": "installed", "agents": len(agents)}
+    snapshot = await services.skills.install(current_user.sub, skill_id)
+    log.info("Installed skill '%s' for user %s (%d agents)", skill_id, current_user.sub, len(snapshot.agents))
+    return {"ok": True, "skill": skill_id, "status": "installed", "agents": len(snapshot.agents)}
 
 
 @router.delete(
@@ -234,12 +232,13 @@ async def uninstall_skill(
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    db    = request.app.state.db
-    skill = await db.skills.get_by_key(skill_id)
+    db       = request.app.state.db
+    services = request.app.state.services
+    skill    = await db.skills.get_by_name(skill_id)
     if not skill:
         raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found.")
 
-    await db.user_skill_v2.uninstall(current_user.sub, skill.id)
+    await services.skills.uninstall(current_user.sub, skill_id)
     return {"ok": True, "skill": skill_id}
 
 
@@ -261,9 +260,10 @@ async def suggest_agent_config(
     using the user's active models and slot preferences from defaults.py.
     """
     db             = request.app.state.db
+    services       = request.app.state.services
     skill_registry = request.app.state.skill_registry
 
-    skill = await db.skills.get_by_key(skill_id)
+    skill = await db.skills.get_by_name(skill_id)
     if not skill:
         raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found.")
 
@@ -276,8 +276,8 @@ async def suggest_agent_config(
     from utils.user_context import connected_providers
     from framework.defaults import smart_pick
     connected     = connected_providers()
-    raw_models    = await db.llm_models.get_active(current_user.sub)
-    active_models = [{"provider": m.provider_key, "model_id": m.model_id} for m in raw_models]
+    raw_models    = await services.llm_models.get_active(current_user.sub)
+    active_models = [{"provider": m.provider_key, "model_id": m.model_name} for m in raw_models]
 
     suggestions = {}
     for agent_key, slot in agent_slot_map.items():

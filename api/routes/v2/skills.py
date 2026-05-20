@@ -49,11 +49,12 @@ def _snapshot_to_dict(s) -> dict:
     }
 
 
-async def _get_skill_or_404(db, user_id: str, skill_id: str):
-    skill = await db.skills.get_by_key(skill_id)
+async def _get_skill_or_404(db, services, user_id: str, skill_id: str):
+    """Return the Skill record or raise 404. Also verifies the skill is installed."""
+    skill = await db.skills.get_by_name(skill_id)
     if not skill:
         raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found.")
-    installed = await db.skill_snapshots.is_installed(user_id, skill.id)
+    installed = await services.skills.is_installed(user_id, skill_id)
     if not installed:
         raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not installed.")
     return skill
@@ -68,10 +69,11 @@ async def list_versions(
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    db    = request.app.state.db
-    skill = await _get_skill_or_404(db, current_user.sub, skill_id)
+    db       = request.app.state.db
+    services = request.app.state.services
+    skill    = await _get_skill_or_404(db, services, current_user.sub, skill_id)
 
-    published = await db.skill_snapshots.list_published(current_user.sub, skill.id)
+    published = await services.skills.list_published_versions(current_user.sub, skill_id)
     current   = published[0] if published else None
 
     return {
@@ -92,8 +94,9 @@ async def get_version(
     request:        Request,
     current_user:   AuthUser = Depends(get_current_user),
 ):
-    db    = request.app.state.db
-    skill = await _get_skill_or_404(db, current_user.sub, skill_id)
+    db       = request.app.state.db
+    services = request.app.state.services
+    skill    = await _get_skill_or_404(db, services, current_user.sub, skill_id)
 
     snapshot = await db.skill_snapshots.get_published_version(
         current_user.sub, skill.id, version_number
@@ -113,10 +116,11 @@ async def get_draft(
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    db    = request.app.state.db
-    skill = await _get_skill_or_404(db, current_user.sub, skill_id)
+    db       = request.app.state.db
+    services = request.app.state.services
+    await _get_skill_or_404(db, services, current_user.sub, skill_id)
 
-    draft = await db.skill_snapshots.get_draft(current_user.sub, skill.id)
+    draft = await services.skills.get_draft(current_user.sub, skill_id)
     return {"skill_id": skill_id, "draft": _snapshot_to_dict(draft) if draft else None}
 
 
@@ -131,42 +135,21 @@ async def update_agent(
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    db    = request.app.state.db
-    skill = await _get_skill_or_404(db, current_user.sub, skill_id)
+    db       = request.app.state.db
+    services = request.app.state.services
+    await _get_skill_or_404(db, services, current_user.sub, skill_id)
 
-    skill_agent = await db.agents.get_by_key(skill.id, agent_name)
-    if not skill_agent:
-        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found.")
+    try:
+        updated_draft = await services.skills.update_agent(
+            user_id    = current_user.sub,
+            skill_name = skill_id,
+            agent_name = agent_name,
+            content    = body.content,
+            model_id   = body.model_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
-    draft = await db.skill_snapshots.get_draft(current_user.sub, skill.id)
-
-    if not draft:
-        published = await db.skill_snapshots.get_current_published(current_user.sub, skill.id)
-        if published:
-            base_agents = published.agents
-        else:
-            from repositories.skill_snapshot_repository import SkillSnapshotAgent
-            oob = await db.agents.get_by_skill(skill.id)
-            base_agents = [
-                SkillSnapshotAgent(
-                    id="", snapshot_id="",
-                    skill_agent_id=a.id,
-                    content=a.content,
-                    model_id=None,
-                    created_at="", modified_at="",
-                )
-                for a in oob
-            ]
-        draft = await db.skill_snapshots.create_draft(current_user.sub, skill.id, base_agents)
-
-    await db.skill_snapshots.upsert_draft_agent(
-        snapshot_id    = draft.id,
-        skill_agent_id = skill_agent.id,
-        content        = body.content,
-        model_id       = body.model_id,
-    )
-
-    updated_draft = await db.skill_snapshots.get_draft(current_user.sub, skill.id)
     return {"ok": True, "skill_id": skill_id, "draft": _snapshot_to_dict(updated_draft)}
 
 
@@ -179,10 +162,10 @@ async def discard_draft(
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    db    = request.app.state.db
-    skill = await _get_skill_or_404(db, current_user.sub, skill_id)
-
-    await db.skill_snapshots.discard_draft(current_user.sub, skill.id)
+    db       = request.app.state.db
+    services = request.app.state.services
+    await _get_skill_or_404(db, services, current_user.sub, skill_id)
+    await services.skills.discard_draft(current_user.sub, skill_id)
     return {"ok": True, "skill_id": skill_id}
 
 
@@ -196,12 +179,13 @@ async def publish_skill(
     request:      Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    db    = request.app.state.db
-    skill = await _get_skill_or_404(db, current_user.sub, skill_id)
+    db       = request.app.state.db
+    services = request.app.state.services
+    await _get_skill_or_404(db, services, current_user.sub, skill_id)
 
-    draft = await db.skill_snapshots.get_draft(current_user.sub, skill.id)
-    if not draft or not draft.agents:
-        raise HTTPException(status_code=400, detail="No draft to publish.")
+    try:
+        snapshot = await services.skills.publish_draft(current_user.sub, skill_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
-    snapshot = await db.skill_snapshots.publish_draft(draft.id)
     return {"ok": True, "skill_id": skill_id, "version": _snapshot_to_dict(snapshot)}

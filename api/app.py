@@ -107,9 +107,10 @@ async def lifespan(app: FastAPI):
 
     _validate_env()
 
-    async with get_db() as db:
-        app.state.db = db
-        logger.info("Database ready")
+    async with get_db() as (db, services):
+        app.state.db       = db
+        app.state.services = services
+        logger.info("Database and services ready")
 
         # ── Skill registry ─────────────────────────────────────────────────
         skill_registry = SkillRegistry(_SKILLS_DIR)
@@ -120,9 +121,7 @@ async def lifespan(app: FastAPI):
         # ── Seed DB from disk ─────────────────────────────────────────────
         await seed_skills(db, skill_registry)
 
-        # ── Load pricing cache ────────────────────────────────────────────
-        from utils.pricing import load_pricing_cache
-        await load_pricing_cache(db)
+        # Pricing cache is loaded inside get_db() by PricingService.load_cache()
         logger.info("Pricing cache ready")
 
         # ── Compile graphs ─────────────────────────────────────────────────
